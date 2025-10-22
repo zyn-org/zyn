@@ -25,17 +25,11 @@ parking_lot = "0.12.5"
 rcgen = "0.14.0"
 rustls = "0.23.32"
 rustls-pemfile = "2.2.0"
-zyn-common = { path = "../zyn-common" }
-zyn-modulator = { path = "../zyn-modulator" }
-zyn-protocol = { path = "../zyn-protocol" }
-zyn-util = { path = "../zyn-util" }
+zyn-common = { path = "../common" }
+zyn-modulator = { path = "../modulator" }
+zyn-protocol = { path = "../protocol" }
+zyn-util = { path = "../util" }
 
 [dev-dependencies]
 pki-types = { package = "rustls-pki-types", version = "1" }
-zyn-test-util = { path = "../zyn-test-util" }
-
-[profile.dev]
-debug = true
-
-[profile.release]
-debug = true
+zyn-test-util = { path = "../test-util" }

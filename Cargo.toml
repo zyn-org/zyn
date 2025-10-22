@@ -2,11 +2,17 @@
 resolver = "2"
 
 members = [
-    "zyn-common",
-    "zyn-modulator",
-    "zyn-protocol",
-    "zyn-protocol-macros",
-    "zyn-server",
-    "zyn-test-util",
-    "zyn-util",
+    "crates/common",
+    "crates/modulator",
+    "crates/protocol",
+    "crates/protocol-macros",
+    "crates/server",
+    "crates/test-util",
+    "crates/util",
 ]
+
+[profile.dev]
+debug = true
+
+[profile.release]
+debug = true
