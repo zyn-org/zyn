@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:weekly"],
+  "lockFileMaintenance": { "enabled": true },
+  "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "groupName": "rust dependencies",
+      "groupSlug": "rust-deps"
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchDepTypes": ["dev-dependencies"],
+      "groupName": "rust dev-dependencies",
+      "groupSlug": "rust-dev-deps"
+    }
+  ]
+}

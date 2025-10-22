@@ -1,0 +1,12 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "zyn-common",
+    "zyn-modulator",
+    "zyn-protocol",
+    "zyn-protocol-macros",
+    "zyn-server",
+    "zyn-test-util",
+    "zyn-util",
+]

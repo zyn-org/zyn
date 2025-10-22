@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "broadcast-payload-csv-validator",
+    "broadcast-payload-json-validator",
+    "plain-authenticator",
+    "private-payload-sender",
+]

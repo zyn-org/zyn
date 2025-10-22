@@ -1,0 +1,19 @@
+# Minimal configuration for S2M modulator using Unix domain socket.
+# This configuration allows the modulator to communicate with the server via a Unix socket.
+# Unix sockets provide better performance for local communication and use file system permissions for security.
+#
+# NOTE: Unlike TCP configuration, Unix domain sockets don't require a shared_secret.
+# Security should be handled through file system permissions on the socket file.
+
+# S2M server configuration.
+[server.listener]
+network = "unix"
+socket_path = "/tmp/zyn-s2m-server.sock"
+
+# M2S client configuration.
+#
+# NOTE: The M2S client SHOULD only be needed if the modulator implements ReceivePrivatePayload operation.
+# When present, the S2M server will connect to the M2S client via Unix domain socket.
+[m2s-client]
+network = "unix"
+socket_path = "/tmp/zyn-m2s-server.sock"

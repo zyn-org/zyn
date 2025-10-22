@@ -1,0 +1,19 @@
+# Minimal configuration for C2S server with S2M client connection via Unix socket.
+# This allows the C2S server to connect to a modulator running as an S2M server.
+
+# Modulator configuration.
+[modulator]
+type = "s2m"
+
+# S2M client configuration.
+[modulator.s2m-client]
+network = "unix"
+socket_path = "/tmp/zyn-s2m-server.sock"
+
+# M2S server configuration.
+#
+# NOTE: The M2S server is only needed if the modulator implements ReceivePrivatePayload operation.
+# When present, it accepts incoming connections from the S2M server for private payload delivery.
+[modulator.m2s-server.listener]
+network = "unix"
+socket_path = "/tmp/zyn-m2s-server.sock"

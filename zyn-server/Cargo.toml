@@ -1,0 +1,41 @@
+[package]
+name = "zyn-server"
+version = "0.1.0"
+edition = "2024"
+
+# Binary target for the main binary
+[[bin]]
+name = "zyn-server"
+path = "bin/main.rs"
+
+[dependencies]
+anyhow = "1.0.100"
+async-trait = "0.1.88"
+console-subscriber = "0.4.1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_derive = "1.0.219"
+toml = "0.9.8"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["json", "time"] }
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "signal", "tracing"] }
+tokio-rustls = "0.26.4"
+tokio-util = "0.7.16"
+parking_lot = "0.12.5"
+rcgen = "0.14.0"
+rustls = "0.23.32"
+rustls-pemfile = "2.2.0"
+zyn-common = { path = "../zyn-common" }
+zyn-modulator = { path = "../zyn-modulator" }
+zyn-protocol = { path = "../zyn-protocol" }
+zyn-util = { path = "../zyn-util" }
+
+[dev-dependencies]
+pki-types = { package = "rustls-pki-types", version = "1" }
+zyn-test-util = { path = "../zyn-test-util" }
+
+[profile.dev]
+debug = true
+
+[profile.release]
+debug = true
