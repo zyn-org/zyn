@@ -15,6 +15,6 @@ serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0.140"
 toml = "0.9.8"
-zyn-modulator = { path = "../../../zyn-modulator" }
-zyn-protocol = { path = "../../../zyn-protocol" }
-zyn-util = { path = "../../../zyn-util" }
+zyn-modulator = { path = "../../../crates/modulator" }
+zyn-protocol = { path = "../../../crates/protocol" }
+zyn-util = { path = "../../../crates/util" }

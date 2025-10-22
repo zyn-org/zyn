@@ -10,11 +10,11 @@ futures = "0.3"
 tokio = { version = "1.48.0", features = ["full"] }
 tokio-util = "0.7.16"
 tokio-rustls = "0.26.4"
-zyn-common = { path = "../zyn-common" }
-zyn-modulator = { path = "../zyn-modulator" }
-zyn-protocol = { path = "../zyn-protocol" }
-zyn-server = { path = "../zyn-server" }
-zyn-util = { path = "../zyn-util" }
+zyn-common = { path = "../common" }
+zyn-modulator = { path = "../modulator" }
+zyn-protocol = { path = "../protocol" }
+zyn-server = { path = "../server" }
+zyn-util = { path = "../util" }
 rustls = "0.23.32"
 webpki-roots = "1.0.3"
 pki-types = { package = "rustls-pki-types", version = "1" }
