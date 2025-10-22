@@ -1,8 +1,8 @@
 # ⚡ Zyn
 
-[![CI](https://img.shields.io/github/actions/workflow/status/zyn-org/zyn/ci.yml?branch=main&style=flat-square)](https://github.com/ortuman/zyn-server/actions)
-[![Releases](https://img.shields.io/github/release/zyn-org/zyn/all.svg?style=flat-square)](https://github.com/ortuman/zyn-server/releases)
-[![LICENSE](https://img.shields.io/github/license/zyn-org/zyn.svg?style=flat-square)](https://github.com/ortuman/zyn-server/blob/master/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/zyn-org/zyn/ci.yml?branch=main&style=flat-square)](https://github.com/zyn-org/zyn/actions)
+[![Releases](https://img.shields.io/github/release/zyn-org/zyn/all.svg?style=flat-square)](https://github.com/zyn-org/zyn/releases)
+[![LICENSE](https://img.shields.io/github/license/zyn-org/zyn.svg?style=flat-square)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
 # Testing
 
