@@ -4,12 +4,12 @@
 [![Releases](https://img.shields.io/github/release/zyn-org/zyn/all.svg?style=flat-square)](https://github.com/zyn-org/zyn/releases)
 [![LICENSE](https://img.shields.io/github/license/zyn-org/zyn.svg?style=flat-square)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
-A high-performance real-time messaging server designed for scalable pub/sub communication. Zyn implements a custom TCP-based protocol optimized for low latency and high throughput, with support for extensible application logic through modulators.
+A high-performance real-time messaging server for pub/sub communication.
 
 ## ✨ Features
 
 - **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast and direct messaging support
-- **Modular Architecture**: Extend the server with custom application logic through external modulators
+- **Modular Architecture**: Extend the server with custom application logic via external modulator
 - **Custom Protocol**: Purpose-built TCP protocol optimized for real-time messaging patterns
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
 - **Flexible Authentication**: Delegate auth to modulators for custom JWT, OAuth, or proprietary schemes
@@ -61,7 +61,7 @@ openssl s_client -connect 127.0.0.1:22622 -ign_eof
 
 ## 📖 What is Zyn?
 
-Zyn is a real-time messaging protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Zyn provides a low-level messaging infrastructure that can be extended with custom application protocols through **modulators**.
+Zyn is a real-time messaging protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Zyn provides a low-level messaging infrastructure that can be extended with custom application protocols through a **modulator**.
 
 ### What is a Modulator?
 
@@ -88,8 +88,8 @@ Zyn supports three connection types:
 3. **Modulator-to-Server (M2S)**: Modulator-initiated connection for sending private messages to clients
 
 ```
-┌─────────┐         ┌──────────────┐         ┌───────────┐
-│ Clients │ ◄─────► │  Zyn Server  │ ◄─────► │ Modulator │
+┌─────────┐         ┌──────────────┐          ┌───────────┐
+│ Clients │ ◄─────► │  Zyn Server  │ ◄─────►  │ Modulator │
 └─────────┘   C2S   └──────────────┘  S2M/M2S └───────────┘
 ```
 
