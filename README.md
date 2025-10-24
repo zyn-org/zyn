@@ -4,6 +4,10 @@
 [![Releases](https://img.shields.io/github/release/zyn-org/zyn/all.svg?style=flat-square)](https://github.com/zyn-org/zyn/releases)
 [![LICENSE](https://img.shields.io/github/license/zyn-org/zyn.svg?style=flat-square)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
+# Demo
+
+https://github.com/user-attachments/assets/1a795774-c45b-4f2d-b676-49b02603ae8b
+
 # Testing
 
 ```bash
