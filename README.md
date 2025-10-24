@@ -16,7 +16,6 @@ A high-performance real-time messaging server for pub/sub communication.
 - **Channel Management**: Fine-grained access control and configuration per channel
 - **Event System**: Comprehensive event notifications for client lifecycle and message flows
 - **High Performance**: Asynchronous Rust implementation with efficient message routing
-- **Multiple Connection Types**: Client-to-Server (C2S), Server-to-Modulator (S2M), and Modulator-to-Server (M2S)
 
 ## 🎬 Demo
 
@@ -182,6 +181,18 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 - **Debuggability**: Text-based message headers for easy debugging
 - **Scalability**: Designed for handling thousands of concurrent connections
 - **Future-proof**: Versioned protocol with explicit evolution path
+
+## ⚠️ Project Status
+
+**Current Version: 0.1.0 (Alpha)**
+
+Zyn is in active development and currently in **alpha** stage. While the core functionality is working and tested, please note:
+
+- 🔧 **APIs may change** before reaching 1.0.0 - Breaking changes may occur as we refine the protocol and interfaces based on community feedback
+- 🧪 **Evaluation and development use** - Suitable for testing, proof-of-concepts, and non-production environments
+- 📣 **Community feedback welcome** - We're actively seeking input to improve Zyn before stabilizing the 1.0.0 API
+
+If you're interested in using Zyn in production, we encourage you to get involved, provide feedback, and help shape the future of the project!
 
 ## 📞 Community
 
