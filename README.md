@@ -1,20 +1,20 @@
 # ⚡ Zyn
 
-[![CI](https://img.shields.io/github/actions/workflow/status/zyn-org/zyn/ci.yml?branch=main&style=flat-square)](https://github.com/zyn-org/zyn/actions)
-[![Releases](https://img.shields.io/github/release/zyn-org/zyn/all.svg?style=flat-square)](https://github.com/zyn-org/zyn/releases)
-[![LICENSE](https://img.shields.io/github/license/zyn-org/zyn.svg?style=flat-square)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/zyn-org/zyn/ci.yaml?branch=main)](https://github.com/zyn-org/zyn/actions)
+[![Releases](https://img.shields.io/github/v/release/zyn-org/zyn?include_prereleases)](https://github.com/zyn-org/zyn/releases)
+[![LICENSE](https://img.shields.io/github/license/zyn-org/zyn)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
 A high-performance real-time messaging server for pub/sub communication.
 
 ## ✨ Features
 
-- **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast and direct messaging support
+- **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
 - **Modular Architecture**: Extend the server with custom application logic via external modulator
 - **Custom Protocol**: Purpose-built TCP protocol optimized for real-time messaging patterns
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
 - **Flexible Authentication**: Delegate auth to modulators for custom JWT, OAuth, or proprietary schemes
 - **Channel Management**: Fine-grained access control and configuration per channel
-- **Event System**: Comprehensive event notifications for client lifecycle and message flows
+- **Event System**: Event notifications for channel membership (MEMBER_JOINED and MEMBER_LEFT)
 - **High Performance**: Asynchronous Rust implementation with efficient message routing
 
 ## 🎬 Demo
