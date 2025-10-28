@@ -65,13 +65,13 @@
 
 ## Overview
 
-Zyn is a real-time messaging protocol designed for scalable pub/sub communication. The protocol provides a low-level messaging infrastructure that can be extended with a custom application protocol through a **modulator**.
+The Zyn protocol is designed for scalable pub/sub communication. It provides a low-level messaging infrastructure that can be extended with a custom application protocol through a **modulator**.
 
 The protocol supports three types of connections:
 
 1. **Client-to-Server (C2S)**: End-user clients connecting to the Zyn server
 2. **Server-to-Modulator (S2M)**: Server-initiated connection to the modulator for delegating application-specific operations
-3. **Modulator-to-Server (M2S)**: A single application protocol service connecting to Zyn to provide custom functionality
+3. **Modulator-to-Server (M2S)**: Modulator-initiated connection for sending direct messages to clients
 
 ### What is a Modulator?
 
@@ -117,7 +117,7 @@ Zyn implements a custom TCP-based protocol rather than leveraging existing proto
 
 Zyn uses a hybrid protocol over TCP with text-based message framing and binary payloads. The protocol defines all messages as request-response pairs or server-initiated notifications. Message headers are newline-delimited text consisting of a message name followed by space-separated parameters. Messages that include payloads (indicated by a `length` parameter) are followed by binary data.
 
-The client initiates a socket connection and then writes a sequence of request messages and reads back the corresponding response messages. A handshake is required on connection to establish protocol parameters and capabilities.
+The client initiates a socket connection and then writes a sequence of request messages and reads back the corresponding response messages. A handshake is required upon connection to establish protocol parameters and capabilities.
 
 The server guarantees that on a single TCP connection, requests will be processed in the order they are sent, and responses will return in that order as well. However, the protocol supports multiple in-flight requests through a correlation ID mechanism, allowing clients to pipeline requests without waiting for each response.
 

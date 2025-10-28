@@ -9,9 +9,9 @@ A high-performance real-time messaging server for pub/sub communication.
 ## ✨ Features
 
 - **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
-- **Modular Architecture**: Extend the server with custom application logic via external modulator
+- **Modular Architecture**: Extend the server with custom application logic via an external modulator
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
-- **Flexible Authentication**: Delegate auth to modulators for custom JWT, OAuth, or proprietary schemes
+- **Flexible Authentication**: Delegate auth to a modulator for custom JWT, OAuth, or proprietary schemes
 - **Channel Management**: Fine-grained access control and configuration per channel
 - **High Performance**: Asynchronous Rust implementation with efficient message routing
 
@@ -58,7 +58,7 @@ openssl s_client -connect 127.0.0.1:22622 -ign_eof
 
 ## 📖 What is Zyn?
 
-Zyn is a real-time messaging protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Zyn provides a low-level messaging infrastructure that can be extended with custom application protocols through a **modulator**.
+Zyn is a real-time messaging server that implements a protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Zyn provides a low-level infrastructure that delegates custom application logic to an external **modulator**.
 
 ### What is a Modulator?
 
@@ -92,7 +92,7 @@ Zyn supports three connection types:
 
 ## 🔧 Configuration
 
-Zyn uses TOML format for configuration. See the [`examples/config/`](examples/config/) directory for configuration examples.
+Zyn uses TOML format for configuration. See the [`examples/config/`](examples/config/) directory for examples.
 
 ## 📚 Documentation
 
@@ -166,6 +166,17 @@ Zyn is in active development and currently in **alpha** stage. While the core fu
 - 📣 **Community feedback welcome** - We're actively seeking input to improve Zyn before stabilizing the 1.0.0 API
 
 If you're interested in using Zyn in production, we encourage you to get involved, provide feedback, and help shape the future of the project!
+
+## 🗺️ Roadmap
+
+We're actively working on expanding Zyn's capabilities. Here are some features planned for future releases:
+
+- **🌐 Federation Support**: Enable multiple Zyn servers to communicate and share messages across distributed deployments, allowing for horizontal scaling and multi-region architectures
+- **📊 Enhanced Observability**: Built-in metrics, tracing, and monitoring capabilities
+- **🔌 Additional Protocol Transports**: Support for WebSocket and other transport layers
+- **⚡ Performance Optimizations**: Continued improvements to throughput and latency
+
+Want to influence the roadmap? Join the conversation in [GitHub Discussions](https://github.com/zyn-org/zyn/discussions)!
 
 ## 📞 Community
 
