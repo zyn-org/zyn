@@ -176,8 +176,6 @@ We're actively working on expanding Zyn's capabilities. Here are some features p
 - **🔌 Additional Protocol Transports**: Support for WebSocket and other transport layers
 - **⚡ Performance Optimizations**: Continued improvements to throughput and latency
 
-Want to influence the roadmap? Join the conversation in [GitHub Discussions](https://github.com/zyn-org/zyn/discussions)!
-
 ## 📞 Community
 
 - **Issues**: [GitHub Issues](https://github.com/zyn-org/zyn/issues)
