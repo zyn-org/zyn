@@ -368,7 +368,7 @@ Registers a username with the server.
 IDENTIFY username=alice
 ```
 
-**Note**: IDENTIFY is required when the configured modulator (if any) doesn't support the `auth` operation type. In such cases, the server cannot delegate authentication to the modulator, so the client must first register a username via IDENTIFY before sending the AUTH token. If a modulator with `auth` support is configured, IDENTIFY can be skipped and authentication will be delegated to the modulator.
+**Note**: IDENTIFY is required when the configured modulator (if any) doesn't support the `auth` operation type. In such cases, the server cannot delegate authentication to the modulator, so the client must first register a username via IDENTIFY. If a modulator with `auth` support is configured, IDENTIFY can be skipped and authentication will be delegated to the modulator.
 
 ---
 

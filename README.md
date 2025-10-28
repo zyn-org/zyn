@@ -10,11 +10,9 @@ A high-performance real-time messaging server for pub/sub communication.
 
 - **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
 - **Modular Architecture**: Extend the server with custom application logic via external modulator
-- **Custom Protocol**: Purpose-built TCP protocol optimized for real-time messaging patterns
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
 - **Flexible Authentication**: Delegate auth to modulators for custom JWT, OAuth, or proprietary schemes
 - **Channel Management**: Fine-grained access control and configuration per channel
-- **Event System**: Event notifications for channel membership (MEMBER_JOINED and MEMBER_LEFT)
 - **High Performance**: Asynchronous Rust implementation with efficient message routing
 
 ## 🎬 Demo
@@ -26,7 +24,7 @@ https://github.com/user-attachments/assets/34baf7d3-4cfa-440d-a6e4-89cb94e922d3
 ### Prerequisites
 
 - Rust 1.75 or later
-- OpenSSL (for TLS support)
+- OpenSSL
 
 ### Installation
 
@@ -94,23 +92,7 @@ Zyn supports three connection types:
 
 ## 🔧 Configuration
 
-Zyn uses TOML configuration files. Here's a minimal example:
-
-```toml
-# Minimal C2S server with S2M modulator connection
-[modulator]
-type = "s2m"
-
-[modulator.s2m-client]
-network = "unix"
-socket_path = "/tmp/zyn-s2m-server.sock"
-
-[modulator.m2s-server.listener]
-network = "unix"
-socket_path = "/tmp/zyn-m2s-server.sock"
-```
-
-See the [`examples/config/`](examples/config/) directory for more configuration examples.
+Zyn uses TOML format for configuration. See the [`examples/config/`](examples/config/) directory for configuration examples.
 
 ## 📚 Documentation
 
@@ -172,15 +154,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📜 License
 
 This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 Why Zyn?
-
-- **Performance**: Built with Rust for maximum performance and safety 🦀
-- **Extensibility**: Modulators enable unlimited customization without modifying core code
-- **Simplicity**: Clean protocol design with flat message structures
-- **Debuggability**: Text-based message headers for easy debugging
-- **Scalability**: Designed for handling thousands of concurrent connections
-- **Future-proof**: Versioned protocol with explicit evolution path
 
 ## ⚠️ Project Status
 
