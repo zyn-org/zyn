@@ -142,19 +142,6 @@ cargo test
 RUST_LOG=debug cargo run --bin zyn-server
 ```
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
-
-- Reporting bugs
-- Suggesting features
-- Submitting pull requests
-- Development setup
-
-## 📜 License
-
-This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
-
 ## ⚠️ Project Status
 
 **Current Version: 0.1.0 (Alpha)**
@@ -175,6 +162,19 @@ We're actively working on expanding Zyn's capabilities. Here are some features p
 - **📊 Enhanced Observability**: Built-in metrics, tracing, and monitoring capabilities
 - **🔌 Additional Protocol Transports**: Support for WebSocket and other transport layers
 - **⚡ Performance Optimizations**: Continued improvements to throughput and latency
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Reporting bugs
+- Suggesting features
+- Submitting pull requests
+- Development setup
+
+## 📜 License
+
+This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## 📞 Community
 
