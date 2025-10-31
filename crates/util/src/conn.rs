@@ -204,16 +204,11 @@ impl TlsDialer {
     let tls_config = if verify_certificates {
       // Use the system's root certificate store for proper certificate verification
       ClientConfig::builder()
-        .with_root_certificates(rustls::RootCertStore::from_iter(
-          webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
-        ))
+        .with_root_certificates(rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned()))
         .with_no_client_auth()
     } else {
       // DANGEROUS: Accept all certificates without validation
-      ClientConfig::builder()
-        .dangerous()
-        .with_custom_certificate_verifier(Arc::new(NoVerifier))
-        .with_no_client_auth()
+      ClientConfig::builder().dangerous().with_custom_certificate_verifier(Arc::new(NoVerifier)).with_no_client_auth()
     };
 
     let tls_connector = TlsConnector::from(Arc::new(tls_config));
