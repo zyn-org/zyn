@@ -104,6 +104,9 @@ impl C2sClient {
   /// the handshake process. After creating the client, you must
   /// call `identify()` to authenticate with a username.
   ///
+  /// By default, this method enables TLS certificate verification for secure connections.
+  /// For testing with self-signed certificates, use `new_with_insecure_tls()` instead.
+  ///
   /// # Arguments
   ///
   /// * `address` - The server address to connect to (e.g., "127.0.0.1:5555").
@@ -115,6 +118,34 @@ impl C2sClient {
   /// Returns a `C2sClient` instance that can be used to communicate with the Zyn server.
   pub fn new(address: impl Into<String>, config: client::Config) -> anyhow::Result<Self> {
     let dialer = Arc::new(TlsDialer::new(address.into())?);
+
+    let handshaker = C2sHandshaker { heartbeat_interval: config.heartbeat_interval };
+
+    let client = Arc::new(client::Client::new("c2s-client", config, dialer, handshaker)?);
+
+    Ok(Self { client })
+  }
+
+  /// Creates a new C2S (Client-to-Server) client instance with insecure TLS.
+  ///
+  /// # Security Warning
+  ///
+  /// **DANGER**: This method disables TLS certificate verification, making the connection
+  /// vulnerable to man-in-the-middle attacks. This should **ONLY** be used in
+  /// development/testing environments with self-signed certificates. **NEVER** use this
+  /// in production environments.
+  ///
+  /// # Arguments
+  ///
+  /// * `address` - The server address to connect to (e.g., "127.0.0.1:5555").
+  /// * `config` - The client configuration containing network settings, timeouts,
+  ///   heartbeat intervals, and other connection parameters.
+  ///
+  /// # Returns
+  ///
+  /// Returns a `C2sClient` instance that can be used to communicate with the Zyn server.
+  pub fn new_with_insecure_tls(address: impl Into<String>, config: client::Config) -> anyhow::Result<Self> {
+    let dialer = Arc::new(TlsDialer::with_certificate_verification(address.into(), false)?);
 
     let handshaker = C2sHandshaker { heartbeat_interval: config.heartbeat_interval };
 

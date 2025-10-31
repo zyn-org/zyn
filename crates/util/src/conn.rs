@@ -153,11 +153,63 @@ pub struct TlsDialer {
 // ===== impl TlsDialer =====
 
 impl TlsDialer {
-  /// Creates a new TLS dialer with the specified address.
+  /// Creates a new TLS dialer with the specified address and certificate verification enabled.
+  ///
+  /// This method creates a TLS dialer that verifies server certificates using the system's
+  /// root certificate store. This is the recommended and secure default for production use.
+  ///
+  /// # Arguments
+  ///
+  /// * `address` - The server address to connect to (e.g., "example.com:443")
+  ///
+  /// # Returns
+  ///
+  /// Returns a `TlsDialer` instance configured with proper certificate verification.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the address format is invalid or the server name cannot be parsed.
   pub fn new(address: String) -> anyhow::Result<Self> {
-    // Create a default TLS client configuration that accepts invalid certificates.
-    let tls_config =
-      ClientConfig::builder().dangerous().with_custom_certificate_verifier(Arc::new(NoVerifier)).with_no_client_auth();
+    Self::with_certificate_verification(address, true)
+  }
+
+  /// Creates a new TLS dialer with configurable certificate verification.
+  ///
+  /// # Arguments
+  ///
+  /// * `address` - The server address to connect to (e.g., "example.com:443")
+  /// * `verify_certificates` - Whether to verify server certificates
+  ///
+  /// # Security Warning
+  ///
+  /// **DANGER**: Setting `verify_certificates` to `false` disables all certificate validation,
+  /// making the connection vulnerable to man-in-the-middle attacks. This should ONLY be used
+  /// in development/testing environments with self-signed certificates. **NEVER** use this
+  /// setting in production environments.
+  ///
+  /// When `verify_certificates` is `false`, the dialer will accept:
+  /// - Expired certificates
+  /// - Self-signed certificates
+  /// - Certificates signed by untrusted CAs
+  /// - Certificates with incorrect hostnames
+  ///
+  /// # Returns
+  ///
+  /// Returns a `TlsDialer` instance configured with the specified certificate verification setting.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the address format is invalid or the server name cannot be parsed.
+  pub fn with_certificate_verification(address: String, verify_certificates: bool) -> anyhow::Result<Self> {
+    let tls_config = if verify_certificates {
+      // Use the system's root certificate store for proper certificate verification
+      ClientConfig::builder()
+        .with_root_certificates(rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned()))
+        .with_no_client_auth()
+    } else {
+      // DANGEROUS: Accept all certificates without validation
+      ClientConfig::builder().dangerous().with_custom_certificate_verifier(Arc::new(NoVerifier)).with_no_client_auth()
+    };
 
     let tls_connector = TlsConnector::from(Arc::new(tls_config));
 
@@ -191,7 +243,19 @@ impl Dialer for TlsDialer {
   }
 }
 
-/// Certificate verifier that accepts all certificates (for testing/development).
+/// Certificate verifier that accepts all certificates without validation.
+///
+/// # Security Warning
+///
+/// **DANGER**: This verifier accepts ALL certificates without any validation, including:
+/// - Expired certificates
+/// - Self-signed certificates
+/// - Certificates signed by untrusted CAs
+/// - Certificates with incorrect hostnames
+/// - Revoked certificates
+///
+/// This makes connections vulnerable to man-in-the-middle attacks and should
+/// **ONLY** be used in development/testing environments. **NEVER** use this in production.
 #[derive(Debug)]
 struct NoVerifier;
 
