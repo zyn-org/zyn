@@ -13,8 +13,7 @@ use deadpool::managed::Object;
 use deadpool::{Runtime, managed};
 use parking_lot::Mutex as PlMutex;
 use parking_lot::RwLock as PlRwLock;
-use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::net::{TcpStream, UnixStream};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::Semaphore;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, mpsc, oneshot};
@@ -26,7 +25,7 @@ use tracing::{debug, error, warn};
 use zyn_protocol::{Message, PongParameters, deserialize, serialize};
 use zyn_util::backoff::ExponentialBackoff;
 use zyn_util::codec::StreamReader;
-use zyn_util::conn::Stream;
+use zyn_util::conn::Dialer;
 use zyn_util::pool::{MutablePoolBuffer, Pool, PoolBuffer};
 
 use crate::service::Service;
@@ -45,18 +44,6 @@ const WRITER_RECEIVER_CAPACITY: usize = 16 * 1024;
 // Zyn client configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
-  /// The network type. Either "tcp" or "unix".
-  /// Default is "tcp".
-  pub network: String,
-
-  /// The address of the modulator server.
-  /// This should be in the format "host:port".
-  pub address: String,
-
-  /// The unix domain socket path.
-  /// This is used when the network type is "unix".
-  pub socket_path: String,
-
   /// The maximum number of idle connections to keep in the pool.
   pub max_idle_connections: usize,
 
@@ -95,7 +82,10 @@ pub struct Config {
 /// * `SessionExtraInfo`: Extra metadata returned by the handshake, which can be used by the client
 ///   for additional context (e.g., authentication tokens, feature flags, etc.).
 #[async_trait::async_trait]
-pub trait Handshaker: Clone + Send + Sync + 'static {
+pub trait Handshaker<S>: Clone + Send + Sync + 'static
+where
+  S: AsyncRead + AsyncWrite,
+{
   /// Extra data returned as part of the handshake response, in addition to `SessionInfo`.
   type SessionExtraInfo: Clone + Send + Sync;
 
@@ -117,15 +107,35 @@ pub trait Handshaker: Clone + Send + Sync + 'static {
   ///
   /// Returns an error if the handshake fails due to protocol mismatch, authentication failure,
   /// server error, etc.
-  async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, Self::SessionExtraInfo)>;
+  async fn handshake(&self, stream: &mut S) -> anyhow::Result<(SessionInfo, Self::SessionExtraInfo)>;
 }
 
-#[derive(Clone, Debug)]
-pub struct Client<H: Handshaker, ST: Service>(Arc<Mutex<ClientInner<H, ST>>>);
+#[derive(Debug)]
+pub struct Client<S, HS, ST>(Arc<Mutex<ClientInner<S, HS, ST>>>)
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service;
+
+impl<S, HS, ST> Clone for Client<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn clone(&self) -> Self {
+    Self(Arc::clone(&self.0))
+  }
+}
 
 // === impl Client ===
 
-impl<H: Handshaker, ST: Service> Client<H, ST> {
+impl<S, HS, ST> Client<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
   /// Creates a new `Client` instance with the provided client ID, configuration, and handshaker.
   ///
   /// # Arguments
@@ -137,8 +147,13 @@ impl<H: Handshaker, ST: Service> Client<H, ST> {
   /// # Errors
   ///
   /// Returns an error if the connection pool cannot be created.
-  pub fn new(client_id: impl Into<String>, config: Config, handshaker: H) -> anyhow::Result<Self> {
-    let inner = ClientInner::new(client_id, config, handshaker)?;
+  pub fn new(
+    client_id: impl Into<String>,
+    config: Config,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> anyhow::Result<Self> {
+    let inner = ClientInner::new(client_id, config, dialer, handshaker)?;
     Ok(Self(Arc::new(Mutex::new(inner))))
   }
 
@@ -172,7 +187,7 @@ impl<H: Handshaker, ST: Service> Client<H, ST> {
   /// # Errors
   ///
   /// Returns an error if no valid connection could be established.
-  pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, H::SessionExtraInfo)> {
+  pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, HS::SessionExtraInfo)> {
     let inner = self.0.lock().await;
     let conn = inner.get_connection().await?;
     Ok(conn.session_info.as_ref().unwrap().clone())
@@ -203,7 +218,12 @@ impl<H: Handshaker, ST: Service> Client<H, ST> {
   }
 }
 
-pub struct ClientInner<H: Handshaker, ST: Service> {
+pub struct ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
   /// The configuration for the modulator client.
   config: Arc<Config>,
 
@@ -211,13 +231,18 @@ pub struct ClientInner<H: Handshaker, ST: Service> {
   next_id: AtomicU16,
 
   /// Connection pool for managing connections to the modulator server.
-  conn_pool: managed::Pool<ClientConnManager<H, ST>>,
+  conn_pool: managed::Pool<ClientConnManager<S, HS, ST>>,
 
   /// Phantom data for the service type.
   _service_type: PhantomData<ST>,
 }
 
-impl<H: Handshaker, ST: Service> fmt::Debug for ClientInner<H, ST> {
+impl<S, HS, ST> fmt::Debug for ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ClientInner")
       .field("config", &self.config)
@@ -228,24 +253,35 @@ impl<H: Handshaker, ST: Service> fmt::Debug for ClientInner<H, ST> {
 
 // === impl ClientInner ===
 
-impl<H: Handshaker, ST: Service> ClientInner<H, ST> {
-  fn new(client_id: impl Into<String>, config: Config, handshaker: H) -> anyhow::Result<Self> {
+impl<S, HS, ST> ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn new(
+    client_id: impl Into<String>,
+    config: Config,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> anyhow::Result<Self> {
     let max_idle_connections = config.max_idle_connections;
     let connect_timeout = config.connect_timeout;
 
     let arc_client_id = Arc::new(client_id.into());
     let arc_config = Arc::new(config);
 
-    let conn_pool = managed::Pool::builder(ClientConnManager::new(arc_client_id, arc_config.clone(), handshaker))
-      .max_size(max_idle_connections)
-      .create_timeout(Some(connect_timeout))
-      .runtime(Runtime::Tokio1)
-      .build()?;
+    let conn_pool =
+      managed::Pool::builder(ClientConnManager::new(arc_client_id, arc_config.clone(), dialer, handshaker))
+        .max_size(max_idle_connections)
+        .create_timeout(Some(connect_timeout))
+        .runtime(Runtime::Tokio1)
+        .build()?;
 
     Ok(Self { config: arc_config.clone(), next_id: AtomicU16::new(1), conn_pool, _service_type: PhantomData })
   }
 
-  async fn get_connection(&self) -> anyhow::Result<Object<ClientConnManager<H, ST>>> {
+  async fn get_connection(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
     ExponentialBackoff::new()
       .with_initial_delay(self.config.backoff_initial_delay)
       .with_max_delay(self.config.backoff_max_delay)
@@ -255,7 +291,7 @@ impl<H: Handshaker, ST: Service> ClientInner<H, ST> {
       .await
   }
 
-  async fn get_connection_from_pool(&self) -> anyhow::Result<Object<ClientConnManager<H, ST>>> {
+  async fn get_connection_from_pool(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
     let get_pool_conn = || async { self.conn_pool.get().await.map_err(|e| anyhow!(" {}", e)) };
 
     match get_pool_conn().await {
@@ -284,8 +320,12 @@ impl<H: Handshaker, ST: Service> ClientInner<H, ST> {
   }
 }
 
-#[derive(Debug)]
-struct ClientConnManager<H: Handshaker, ST: Service> {
+struct ClientConnManager<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
   /// The client ID used to identify the client.
   client_id: Arc<String>,
 
@@ -295,41 +335,64 @@ struct ClientConnManager<H: Handshaker, ST: Service> {
   /// unique connection ID generator.
   next_conn_id: atomic::AtomicU16,
 
+  /// The dialer used to establish connections.
+  dialer: Arc<dyn Dialer<Stream = S>>,
+
   /// The handshaker used to perform the handshake with the server.
-  handshaker: H,
+  handshaker: HS,
 
   /// Phantom data for the service type.
   _service_type: std::marker::PhantomData<ST>,
 }
 
-impl<H: Handshaker, ST: Service> ClientConnManager<H, ST> {
-  pub fn new(client_id: Arc<String>, config: Arc<Config>, handshaker: H) -> Self {
+impl<S, HS, ST> ClientConnManager<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  pub fn new(client_id: Arc<String>, config: Arc<Config>, dialer: Arc<dyn Dialer<Stream = S>>, handshaker: HS) -> Self {
     Self {
       client_id,
       config,
       next_conn_id: atomic::AtomicU16::new(1),
+      dialer,
       handshaker,
       _service_type: std::marker::PhantomData,
     }
   }
 }
 
-impl<H: Handshaker, ST: Service> managed::Manager for ClientConnManager<H, ST> {
-  type Type = ClientConn<H, ST>;
+impl<S, HS, ST> managed::Manager for ClientConnManager<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  type Type = ClientConn<S, HS, ST>;
   type Error = anyhow::Error;
 
   async fn create(&self) -> Result<Self::Type, Self::Error> {
     let conn_id = self.next_conn_id.fetch_add(1, atomic::Ordering::SeqCst);
 
-    let mut conn =
-      ClientConn::<H, ST>::new(self.client_id.clone(), conn_id, self.config.clone(), self.handshaker.clone());
+    let mut conn = ClientConn::<S, HS, ST>::new(
+      self.client_id.clone(),
+      conn_id,
+      self.config.clone(),
+      self.dialer.clone(),
+      self.handshaker.clone(),
+    );
 
     conn.connect().await?;
 
     Ok(conn)
   }
 
-  async fn recycle(&self, conn: &mut ClientConn<H, ST>, _: &managed::Metrics) -> managed::RecycleResult<Self::Error> {
+  async fn recycle(
+    &self,
+    conn: &mut ClientConn<S, HS, ST>,
+    _: &managed::Metrics,
+  ) -> managed::RecycleResult<Self::Error> {
     // Check if the connection is still healthy, and if not, shutdown it.
     if conn.is_unhealthy() {
       conn.shutdown().await?;
@@ -338,7 +401,7 @@ impl<H: Handshaker, ST: Service> managed::Manager for ClientConnManager<H, ST> {
     Ok(())
   }
 
-  fn detach(&self, conn: &mut ClientConn<H, ST>) {
+  fn detach(&self, conn: &mut ClientConn<S, HS, ST>) {
     tokio::task::block_in_place(|| {
       tokio::runtime::Handle::current().block_on(async {
         match conn.shutdown().await {
@@ -442,7 +505,12 @@ impl PendingRequests {
   }
 }
 
-struct ClientConn<H: Handshaker, ST: Service> {
+struct ClientConn<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
   /// The client ID used to identify the client.
   client_id: Arc<String>,
 
@@ -452,11 +520,14 @@ struct ClientConn<H: Handshaker, ST: Service> {
   /// The configuration for the modulator client.
   config: Arc<Config>,
 
+  /// The dialer used to establish connections.
+  dialer: Arc<dyn Dialer<Stream = S>>,
+
   /// The handshaker used to perform the handshake with the server.
-  handshaker: H,
+  handshaker: HS,
 
   /// The session information after the handshake is completed.
-  session_info: Option<(SessionInfo, H::SessionExtraInfo)>,
+  session_info: Option<(SessionInfo, HS::SessionExtraInfo)>,
 
   /// Semaphore to limit the number of inflight requests.
   inflight_requests_sem: Option<Arc<Semaphore>>,
@@ -482,8 +553,19 @@ struct ClientConn<H: Handshaker, ST: Service> {
 
 // === impl ClientConn ===
 
-impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
-  fn new(client_id: Arc<String>, conn_id: u16, config: Arc<Config>, handshaker: H) -> Self {
+impl<S, HS, ST> ClientConn<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn new(
+    client_id: Arc<String>,
+    conn_id: u16,
+    config: Arc<Config>,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> Self {
     let task_tracker = TaskTracker::new();
     let shutdown_token = CancellationToken::new();
 
@@ -491,6 +573,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
       client_id,
       conn_id,
       config,
+      dialer,
       handshaker,
       session_info: None,
       inflight_requests_sem: None,
@@ -504,29 +587,9 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
   }
 
   async fn connect(&mut self) -> anyhow::Result<()> {
-    let mut stream = match self.config.network.as_str() {
-      TCP_NETWORK => {
-        // Connect via TCP
-        let tcp_stream = TcpStream::connect(&self.config.address)
-          .await
-          .map_err(|e| anyhow::anyhow!("failed to connect to {}: {}", self.config.address, e))?;
+    // Establish connection using the dialer
+    let mut stream = self.dialer.dial().await?;
 
-        tcp_stream.set_nodelay(true)?;
-
-        Stream::Tcp(tcp_stream)
-      },
-      UNIX_NETWORK => {
-        // Connect via Unix domain socket
-        let unix_stream = UnixStream::connect(&self.config.socket_path)
-          .await
-          .map_err(|e| anyhow::anyhow!("failed to connect to {}: {}", self.config.socket_path, e))?;
-
-        Stream::Unix(unix_stream)
-      },
-      _ => {
-        return Err(anyhow::anyhow!("unsupported network type: {}", self.config.network));
-      },
-    };
     // Handshake with the server
     let (session_info, session_extra_info) = self.handshaker.handshake(&mut stream).await?;
 
@@ -675,7 +738,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
   async fn writer_task(
     client_id: Arc<String>,
     conn_id: u16,
-    mut wh: WriteHalf<Stream>,
+    mut wh: WriteHalf<S>,
     mut rx: Receiver<(Message, Option<PoolBuffer>)>,
     mut message_buff: MutablePoolBuffer,
     error_state: ErrorState,
@@ -726,7 +789,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
   async fn reader_task(
     client_id: Arc<String>,
     conn_id: u16,
-    rh: ReadHalf<Stream>,
+    rh: ReadHalf<S>,
     read_buffer: MutablePoolBuffer,
     payload_buffer_pool: Pool,
     pending_requests: PendingRequests,
@@ -814,7 +877,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
 
   async fn read_message_payload(
     msg: &Message,
-    stream_reader: &mut StreamReader<ReadHalf<Stream>>,
+    stream_reader: &mut StreamReader<ReadHalf<S>>,
     payload_buffer_pool: Pool,
     payload_read_timeout: Duration,
   ) -> anyhow::Result<Option<PoolBuffer>> {
@@ -844,7 +907,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
   async fn write_message(
     message: &Message,
     payload_opt: Option<PoolBuffer>,
-    writer: &mut WriteHalf<Stream>,
+    writer: &mut WriteHalf<S>,
     write_buffer: &mut [u8],
   ) -> anyhow::Result<()> {
     let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
@@ -860,7 +923,7 @@ impl<H: Handshaker, ST: Service> ClientConn<H, ST> {
     Ok(())
   }
 
-  async fn read_payload(buffer: &mut [u8], stream_reader: &mut StreamReader<ReadHalf<Stream>>) -> anyhow::Result<()> {
+  async fn read_payload(buffer: &mut [u8], stream_reader: &mut StreamReader<ReadHalf<S>>) -> anyhow::Result<()> {
     stream_reader.read_raw(buffer).await?;
 
     // Read last byte, and ensure it's a newline.
