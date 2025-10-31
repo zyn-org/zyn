@@ -6,6 +6,7 @@ use tracing::warn;
 
 use zyn_modulator::OutboundPrivatePayload;
 
+mod client;
 mod config;
 mod listener;
 
