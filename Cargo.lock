@@ -1970,6 +1970,15 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.3",
+]
+
+[[package]]
+name = "webpki-roots"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32b130c0d2d49f8b6889abc456e795e82525204f27c42cf767cf0d7734e089b8"
@@ -2214,7 +2223,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "webpki-roots",
+ "webpki-roots 1.0.3",
  "zyn-protocol",
  "zyn-util",
 ]
@@ -2315,7 +2324,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-util",
- "webpki-roots",
+ "webpki-roots 1.0.3",
  "zyn-common",
  "zyn-modulator",
  "zyn-protocol",
@@ -2338,4 +2347,5 @@ dependencies = [
  "string_cache",
  "tokio",
  "tokio-rustls",
+ "webpki-roots 0.26.11",
 ]
