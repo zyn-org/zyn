@@ -1,19 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0
 
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
-
 use zyn_common::client::SessionInfo;
 use zyn_common::service::{M2sService, S2mService};
-use zyn_protocol::{DEFAULT_MESSAGE_BUFFER_SIZE, M2sModDirectParameters, Message, S2mAuthParameters};
+use zyn_protocol::{DEFAULT_MESSAGE_BUFFER_SIZE, M2sModDirectParameters, Message, S2mAuthParameters, request};
 use zyn_protocol::{
   M2sConnectParameters, S2mConnectParameters, S2mForwardBroadcastPayloadParameters, S2mForwardEventParameters,
-  S2mModDirectParameters, deserialize, serialize,
+  S2mModDirectParameters,
 };
-use zyn_util::codec::StreamReader;
 use zyn_util::conn::{Dialer, Stream, TcpDialer, UnixDialer};
 
 use zyn_util::pool::{Pool, PoolBuffer};
@@ -44,35 +40,15 @@ impl zyn_common::client::Handshaker<Stream> for M2sHandshaker {
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, M2sSessionExtraInfo)> {
     let pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
-    let mut message_buff = pool.must_acquire();
+    let message_buff = pool.must_acquire();
 
-    let handshake_message = Message::M2sConnect(M2sConnectParameters {
+    let connect_msg = Message::M2sConnect(M2sConnectParameters {
       protocol_version: 1,
       secret: self.shared_secret.clone(),
       heartbeat_interval: self.heartbeat_interval.as_millis() as u32,
     });
 
-    let n = serialize(&handshake_message, message_buff.as_mut_slice())?;
-    stream.write_all(&message_buff.as_slice()[..n]).await?;
-    stream.flush().await?;
-
-    let mut stream_reader = StreamReader::with_pool_buffer(stream, message_buff);
-
-    let reply_msg = {
-      let _ = stream_reader.next().await?;
-
-      match stream_reader.get_line() {
-        Some(line_bytes) => match deserialize(Cursor::new(line_bytes)) {
-          Ok(msg) => msg,
-          Err(e) => {
-            return Err(anyhow::anyhow!("failed to deserialize handshake response: {}", e));
-          },
-        },
-        None => {
-          return Err(anyhow::anyhow!("failed to read handshake response from server"));
-        },
-      }
-    };
+    let reply_msg = request(connect_msg, stream, message_buff).await?;
 
     match reply_msg {
       Message::M2sConnectAck(params) => {
@@ -241,35 +217,15 @@ impl zyn_common::client::Handshaker<Stream> for S2mHandshaker {
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, S2mSessionExtraInfo)> {
     let pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
-    let mut message_buff = pool.must_acquire();
+    let message_buff = pool.must_acquire();
 
-    let handshake_message = Message::S2mConnect(S2mConnectParameters {
+    let connect_msg = Message::S2mConnect(S2mConnectParameters {
       protocol_version: 1,
       secret: self.shared_secret.clone(),
       heartbeat_interval: self.heartbeat_interval.as_millis() as u32,
     });
 
-    let n = serialize(&handshake_message, message_buff.as_mut_slice())?;
-    stream.write_all(&message_buff.as_slice()[..n]).await?;
-    stream.flush().await?;
-
-    let mut stream_reader = StreamReader::with_pool_buffer(stream, message_buff);
-
-    let reply_msg = {
-      let _ = stream_reader.next().await?;
-
-      match stream_reader.get_line() {
-        Some(line_bytes) => match deserialize(Cursor::new(line_bytes)) {
-          Ok(msg) => msg,
-          Err(e) => {
-            return Err(anyhow::anyhow!("failed to deserialize handshake response: {}", e));
-          },
-        },
-        None => {
-          return Err(anyhow::anyhow!("failed to read handshake response from server"));
-        },
-      }
-    };
+    let reply_msg = request(connect_msg, stream, message_buff).await?;
 
     match reply_msg {
       Message::S2mConnectAck(params) => {

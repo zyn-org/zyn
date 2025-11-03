@@ -2225,6 +2225,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "humantime-serde",
+ "serde",
+ "serde_derive",
  "tokio",
  "tokio-rustls",
  "tracing",
@@ -2277,6 +2280,7 @@ dependencies = [
  "anyhow",
  "once_cell",
  "regex",
+ "tokio",
  "zyn-protocol-macros",
  "zyn-util",
 ]
