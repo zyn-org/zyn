@@ -118,6 +118,7 @@ Each example demonstrates different aspects of building modulators for Zyn.
 ```
 zyn/
 ├── crates/
+│   ├── client/          # Client libraries
 │   ├── common/          # Shared types and utilities
 │   ├── modulator/       # Modulator client/server implementation
 │   ├── protocol/        # Protocol message definitions
