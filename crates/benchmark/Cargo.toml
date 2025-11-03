@@ -20,10 +20,10 @@ rustls = "0.23.32"
 pki-types = { package = "rustls-pki-types", version = "1" }
 webpki-roots = "1.0.3"
 hdrhistogram = "7.5"
-indicatif = "0.17"
+indicatif = "0.18"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["fmt"] }
-rand = "0.8"
+rand = "0.9"
 futures = "0.3"
 
 # Internal dependencies
