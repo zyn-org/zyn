@@ -2229,6 +2229,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "zyn-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "tokio",
+ "tokio-rustls",
+ "tracing",
+ "zyn-common",
+ "zyn-protocol",
+ "zyn-test-util",
+ "zyn-util",
+]
+
+[[package]]
 name = "zyn-common"
 version = "0.1.0"
 dependencies = [
@@ -2305,6 +2320,7 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "zyn-client",
  "zyn-common",
  "zyn-modulator",
  "zyn-protocol",

@@ -6,7 +6,6 @@ use tracing::warn;
 
 use zyn_modulator::OutboundPrivatePayload;
 
-mod client;
 mod config;
 mod listener;
 
@@ -17,6 +16,9 @@ pub use config::Limits;
 pub use config::{Config, ListenerConfig};
 pub use listener::C2sListener;
 pub use router::Router;
+
+// Re-export C2sClient from zyn-client crate
+pub use zyn_client::{C2sClient, C2sSessionExtraInfo};
 
 use zyn_protocol::{Message, ModDirectParameters};
 

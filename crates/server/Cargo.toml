@@ -25,6 +25,7 @@ parking_lot = "0.12.5"
 rcgen = "0.14.0"
 rustls = "0.23.32"
 rustls-pemfile = "2.2.0"
+zyn-client = { path = "../client" }
 zyn-common = { path = "../common" }
 zyn-modulator = { path = "../modulator" }
 zyn-protocol = { path = "../protocol" }
