@@ -2,48 +2,224 @@
 
 #![allow(dead_code)]
 
-use std::io::Cursor;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::anyhow;
-use tokio::io::AsyncWriteExt;
+
+use serde_derive::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
-use tracing::debug;
 
 use zyn_common::client::{self, Handshaker, SessionInfo};
 use zyn_common::service::C2sService;
 use zyn_protocol::{
-  ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, deserialize, serialize,
+  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, Zid, request,
 };
-use zyn_util::codec::StreamReader;
 use zyn_util::conn::TlsDialer;
 use zyn_util::pool::{Pool, PoolBuffer};
 use zyn_util::string_atom::StringAtom;
 
+/// Configuration for C2S connections.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct C2sConfig {
+  /// The address of the server to connect to.
+  #[serde(default)]
+  pub address: String,
+
+  /// The heartbeat interval for the client that should be negotiated
+  /// with the server.
+  #[serde(default = "default_heartbeat_interval", with = "humantime_serde")]
+  pub heartbeat_interval: Duration,
+
+  /// The client connection timeout.
+  /// This is the timeout for establishing a connection to the server.
+  #[serde(default = "default_connect_timeout", with = "humantime_serde")]
+  pub connect_timeout: Duration,
+
+  /// The client read/write timeout.
+  #[serde(default = "default_timeout", with = "humantime_serde")]
+  pub timeout: Duration,
+
+  /// The timeout for reading a payload from the server.
+  #[serde(default = "default_payload_read_timeout", with = "humantime_serde")]
+  pub payload_read_timeout: Duration,
+
+  /// The initial delay for the backoff strategy.
+  #[serde(default = "default_backoff_initial_delay", with = "humantime_serde")]
+  pub backoff_initial_delay: Duration,
+
+  /// The maximum delay for the backoff strategy.
+  #[serde(default = "default_backoff_max_delay", with = "humantime_serde")]
+  pub backoff_max_delay: Duration,
+
+  /// The maximum number of retries for the backoff strategy.
+  #[serde(default = "default_backoff_max_retries")]
+  pub backoff_max_retries: usize,
+}
+
+impl From<C2sConfig> for zyn_common::client::Config {
+  fn from(val: C2sConfig) -> Self {
+    zyn_common::client::Config {
+      max_idle_connections: 1,
+      heartbeat_interval: val.heartbeat_interval,
+      connect_timeout: val.connect_timeout,
+      timeout: val.timeout,
+      payload_read_timeout: val.payload_read_timeout,
+      backoff_initial_delay: val.backoff_initial_delay,
+      backoff_max_delay: val.backoff_max_delay,
+      backoff_max_retries: val.backoff_max_retries,
+    }
+  }
+}
+
+fn default_heartbeat_interval() -> Duration {
+  Duration::from_secs(60)
+}
+
+fn default_connect_timeout() -> Duration {
+  Duration::from_secs(5)
+}
+
+fn default_timeout() -> Duration {
+  Duration::from_secs(5)
+}
+
+fn default_payload_read_timeout() -> Duration {
+  Duration::from_secs(5)
+}
+
+fn default_backoff_initial_delay() -> Duration {
+  Duration::from_millis(100)
+}
+
+fn default_backoff_max_delay() -> Duration {
+  Duration::from_secs(30)
+}
+
+fn default_backoff_max_retries() -> usize {
+  5
+}
+
+/// A trait for implementing multi-step authentication mechanisms.
+///
+/// This trait supports SASL-style authentication protocols where the client
+/// and server exchange multiple tokens/challenges until authentication completes.
+/// Implementations should maintain internal state across the authentication flow.
+#[async_trait::async_trait]
+pub trait Authenticator: Send {
+  /// Initiates the authentication process.
+  ///
+  /// Returns the initial authentication token to send to the server.
+  /// This is called once at the beginning of the authentication flow.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the authenticator fails to generate the initial token.
+  async fn start(&mut self) -> anyhow::Result<String>;
+
+  /// Processes a server challenge and generates the next response.
+  ///
+  /// This method is called for each challenge received from the server during
+  /// the authentication flow. The implementation should process the challenge
+  /// and return an appropriate response token.
+  ///
+  /// # Arguments
+  ///
+  /// * `challenge` - The challenge token received from the server
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the challenge cannot be processed or if the
+  /// authentication flow fails.
+  async fn next(&mut self, challenge: String) -> anyhow::Result<String>;
+}
+
+/// A factory trait for creating new `Authenticator` instances.
+///
+/// This trait is used to create fresh authenticator instances for each connection
+/// attempt. Since `Authenticator` implementations are stateful (maintaining state
+/// across the multi-step authentication flow), a factory is needed to produce new
+/// instances for reconnections or retry attempts.
+pub trait AuthenticatorFactory: Send + Sync + 'static {
+  /// Creates a new `Authenticator` instance.
+  ///
+  /// This method is called each time a new authentication flow needs to begin,
+  /// ensuring that each attempt starts with a fresh authenticator state.
+  ///
+  /// # Returns
+  ///
+  /// Returns a boxed `Authenticator` ready to begin the authentication process.
+  fn create(&self) -> Box<dyn Authenticator>;
+}
+
+/// Authentication method to use when connecting to the server.
+///
+/// Supports two authentication approaches:
+/// - Simple username-based identification (IDENTIFY command)
+/// - Multi-step authentication with custom authenticator (AUTH command)
+#[derive(Clone)]
+pub enum AuthMethod {
+  /// Simple username-based authentication using the IDENTIFY command.
+  ///
+  /// This is a single-step authentication where only a username is required.
+  Identify { username: String },
+
+  /// Multi-step authentication using a custom authenticator factory.
+  ///
+  /// This supports SASL-style authentication protocols where multiple
+  /// challenge-response exchanges may occur. The factory creates fresh
+  /// authenticator instances for each connection attempt, ensuring that
+  /// reconnections start with clean state.
+  Auth { authenticator_factory: Arc<dyn AuthenticatorFactory> },
+}
+
+impl std::fmt::Debug for AuthMethod {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      AuthMethod::Identify { username } => write!(f, "Identify({})", username),
+      AuthMethod::Auth { .. } => write!(f, "Auth"),
+    }
+  }
+}
+
 /// Session information returned after successful C2S handshake.
 #[derive(Clone, Debug)]
 pub struct C2sSessionExtraInfo {
-  /// Whether authentication is required by the server.
-  pub auth_required: bool,
+  zid: Zid,
 }
 
-/// Handshaker implementation for C2S (Client-to-Server) connections.
+/// Handshaker implementation for C2S connections.
 #[derive(Clone)]
 struct C2sHandshaker {
   /// The requested heartbeat interval.
   heartbeat_interval: Duration,
+
+  /// The username to use for identification.
+  username: Option<String>,
+
+  /// The authenticator factory to use for authentication (when required).
+  authenticator_factory: Option<Arc<dyn AuthenticatorFactory>>,
 }
 
 // === impl C2sHandshaker ===
+
+impl std::fmt::Debug for C2sHandshaker {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("C2sHandshaker")
+      .field("heartbeat_interval", &self.heartbeat_interval)
+      .field("username", &self.username.is_some())
+      .field("authenticator_factory", &self.authenticator_factory.is_some())
+      .finish()
+  }
+}
 
 #[async_trait::async_trait]
 impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
   type SessionExtraInfo = C2sSessionExtraInfo;
 
   async fn handshake(&self, stream: &mut TlsStream<TcpStream>) -> anyhow::Result<(SessionInfo, C2sSessionExtraInfo)> {
-    let pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
+    let mut pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
     let mut message_buff = pool.must_acquire();
 
     let connect_msg = Message::Connect(ConnectParameters {
@@ -51,20 +227,7 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
       heartbeat_interval: self.heartbeat_interval.as_millis() as u32,
     });
 
-    let n = serialize(&connect_msg, message_buff.as_mut_slice())?;
-    stream.write_all(&message_buff.as_slice()[..n]).await?;
-    stream.flush().await?;
-
-    let mut stream_reader = StreamReader::with_pool_buffer(stream, message_buff);
-
-    let connect_ack_msg = {
-      let _ = stream_reader.next().await?;
-
-      match stream_reader.get_line() {
-        Some(line_bytes) => deserialize(Cursor::new(line_bytes))?,
-        None => return Err(anyhow!("failed to read ConnectAck from server")),
-      }
-    };
+    let connect_ack_msg = request(connect_msg, stream, message_buff).await?;
 
     let (auth_required, session_info) = match connect_ack_msg {
       Message::ConnectAck(params) => {
@@ -85,43 +248,116 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
       },
     };
 
-    let extra_info = C2sSessionExtraInfo { auth_required };
+    pool = Pool::new(1, session_info.max_message_size as usize);
+    message_buff = pool.must_acquire();
 
-    Ok((session_info, extra_info))
+    let zid: Zid;
+
+    if !auth_required && let Some(username) = self.username.as_ref() {
+      let identify_msg = Message::Identify(IdentifyParameters { username: username.as_str().into() });
+
+      match request(identify_msg, stream, message_buff).await? {
+        Message::IdentifyAck(params) => zid = Zid::try_from(params.zid)?,
+        Message::Error(err) => return Err(anyhow!("error during handshake: {:?}", err.reason)),
+        _ => return Err(anyhow!("unexpected message during handshake: expected IdentifyAck")),
+      }
+    } else if let Some(auth_factory) = self.authenticator_factory.as_ref() {
+      let mut authenticator = auth_factory.create();
+
+      // Start authentication flow
+      let mut token = authenticator.start().await?;
+
+      loop {
+        let auth_msg = Message::Auth(AuthParameters { token: token.as_str().into() });
+
+        match request(auth_msg, stream, message_buff).await? {
+          Message::AuthAck(params) => {
+            if let Some(succeded) = params.succeeded
+              && let Some(zid_str) = params.zid
+              && succeded
+            {
+              // Authentication succeeded
+              zid = Zid::try_from(zid_str)?;
+              break;
+            } else if let Some(challenge) = params.challenge {
+              // Continue with challenge-response
+              token = authenticator.next(challenge.to_string()).await?;
+              message_buff = pool.must_acquire();
+            } else {
+              // Authentication failed
+              return Err(anyhow!("authentication failed"));
+            }
+          },
+          Message::Error(err) => {
+            return Err(anyhow!("error during authentication: {:?}", err.reason));
+          },
+          _ => {
+            return Err(anyhow!("unexpected message during authentication: expected AuthAck"));
+          },
+        }
+      }
+    } else {
+      return Err(anyhow!("no proper authentication method provided"));
+    }
+
+    Ok((session_info, C2sSessionExtraInfo { zid }))
   }
 }
 
-/// C2S (Client-to-Server) client for connecting to the Zyn server.
+impl C2sHandshaker {
+  /// Creates a new handshaker with the specified heartbeat interval and authentication method.
+  ///
+  /// # Arguments
+  ///
+  /// * `heartbeat_interval` - The heartbeat interval to negotiate with the server
+  /// * `auth_method` - The authentication method to use during handshake
+  ///
+  /// # Returns
+  ///
+  /// Returns a new `C2sHandshaker` instance configured with the provided parameters.
+  fn new(heartbeat_interval: Duration, auth_method: AuthMethod) -> Self {
+    match auth_method {
+      AuthMethod::Identify { username } => {
+        Self { heartbeat_interval, username: Some(username), authenticator_factory: None }
+      },
+      AuthMethod::Auth { authenticator_factory } => {
+        Self { heartbeat_interval, username: None, authenticator_factory: Some(authenticator_factory) }
+      },
+    }
+  }
+}
+
+/// C2S client for connecting to the Zyn server.
 #[derive(Clone)]
 pub struct C2sClient {
   client: Arc<client::Client<TlsStream<TcpStream>, C2sHandshaker, C2sService>>,
 }
 
 impl C2sClient {
-  /// Creates a new C2S (Client-to-Server) client instance.
+  /// Creates a new C2S client instance.
   ///
   /// This method initializes a client that connects to the Zyn server, handling
-  /// the handshake process. After creating the client, you must
-  /// call `identify()` to authenticate with a username.
+  /// the handshake process.
   ///
   /// By default, this method enables TLS certificate verification for secure connections.
   /// For testing with self-signed certificates, use `new_with_insecure_tls()` instead.
   ///
   /// # Arguments
   ///
-  /// * `address` - The server address to connect to (e.g., "127.0.0.1:5555").
-  /// * `config` - The client configuration containing network settings, timeouts,
-  ///   heartbeat intervals, and other connection parameters.
+  /// * `config` - The client configuration containing the server address, network settings,
+  ///   timeouts, heartbeat intervals, and other connection parameters.
+  /// * `auth_method` - The authentication method to use when connecting to the server.
+  ///   Can be either simple username-based identification or multi-step authentication.
   ///
   /// # Returns
   ///
   /// Returns a `C2sClient` instance that can be used to communicate with the Zyn server.
-  pub fn new(address: impl Into<String>, config: client::Config) -> anyhow::Result<Self> {
-    let dialer = Arc::new(TlsDialer::new(address.into())?);
+  pub fn new(config: C2sConfig, auth_method: AuthMethod) -> anyhow::Result<Self> {
+    let dialer = Arc::new(TlsDialer::new(config.address.as_str().into())?);
 
-    let handshaker = C2sHandshaker { heartbeat_interval: config.heartbeat_interval };
+    let handshaker = C2sHandshaker::new(config.heartbeat_interval, auth_method);
 
-    let client = Arc::new(client::Client::new("c2s-client", config, dialer, handshaker)?);
+    let client = Arc::new(client::Client::new("c2s-client", config.into(), dialer, handshaker)?);
 
     Ok(Self { client })
   }
@@ -137,19 +373,20 @@ impl C2sClient {
   ///
   /// # Arguments
   ///
-  /// * `address` - The server address to connect to (e.g., "127.0.0.1:5555").
-  /// * `config` - The client configuration containing network settings, timeouts,
-  ///   heartbeat intervals, and other connection parameters.
+  /// * `config` - The client configuration containing the server address, network settings,
+  ///   timeouts, heartbeat intervals, and other connection parameters.
+  /// * `auth_method` - The authentication method to use when connecting to the server.
+  ///   Can be either simple username-based identification or multi-step authentication.
   ///
   /// # Returns
   ///
   /// Returns a `C2sClient` instance that can be used to communicate with the Zyn server.
-  pub fn new_with_insecure_tls(address: impl Into<String>, config: client::Config) -> anyhow::Result<Self> {
-    let dialer = Arc::new(TlsDialer::with_certificate_verification(address.into(), false)?);
+  pub fn new_with_insecure_tls(config: C2sConfig, auth_method: AuthMethod) -> anyhow::Result<Self> {
+    let dialer = Arc::new(TlsDialer::with_certificate_verification(config.address.as_str().into(), false)?);
 
-    let handshaker = C2sHandshaker { heartbeat_interval: config.heartbeat_interval };
+    let handshaker = C2sHandshaker::new(config.heartbeat_interval, auth_method);
 
-    let client = Arc::new(client::Client::new("c2s-client", config, dialer, handshaker)?);
+    let client = Arc::new(client::Client::new("c2s-client", config.into(), dialer, handshaker)?);
 
     Ok(Self { client })
   }
@@ -176,41 +413,6 @@ impl C2sClient {
   /// * The session information is not available
   pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, C2sSessionExtraInfo)> {
     self.client.session_info().await
-  }
-
-  /// Identifies the client with the server using a username.
-  ///
-  /// This method must be called after creating the client and before performing
-  /// any other operations.
-  ///
-  /// # Arguments
-  ///
-  /// * `username` - The username to identify as.
-  ///
-  /// # Returns
-  ///
-  /// Returns the server-assigned ZID if identification succeeds.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if:
-  /// * The identification is rejected by the server
-  /// * The connection is lost during identification
-  /// * The server returns an unexpected response
-  pub async fn identify(&self, username: StringAtom) -> anyhow::Result<Option<StringAtom>> {
-    let message = Message::Identify(IdentifyParameters { username });
-
-    let handle = self.client.send_message(message, None).await?;
-    let (response, _) = handle.await??;
-
-    match response {
-      Message::IdentifyAck(params) => {
-        debug!(zid = ?params.zid, "identified successfully");
-        Ok(Some(params.zid))
-      },
-      Message::Error(err) => Err(anyhow!("identification failed: {:?}", err.reason)),
-      _ => Err(anyhow!("unexpected response to identify request")),
-    }
   }
 
   /// Joins a channel on the server.
