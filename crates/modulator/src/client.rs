@@ -69,7 +69,7 @@ impl zyn_common::client::Handshaker<Stream> for M2sHandshaker {
 
 #[derive(Clone, Debug)]
 pub struct M2sClient {
-  client: zyn_common::client::Client<Stream, M2sHandshaker, M2sService>,
+  client: zyn_common::client::PooledClient<Stream, M2sHandshaker, M2sService>,
 }
 
 // === impl M2sClient ===
@@ -107,7 +107,7 @@ impl M2sClient {
 
     let handshaker = M2sHandshaker { shared_secret, heartbeat_interval: config.heartbeat_interval };
 
-    let client = zyn_common::client::Client::new(
+    let client = zyn_common::client::PooledClient::new(
       "m2s:client",
       zyn_common::client::Config {
         max_idle_connections: config.max_idle_connections,
@@ -249,7 +249,7 @@ impl zyn_common::client::Handshaker<Stream> for S2mHandshaker {
 
 #[derive(Clone, Debug)]
 pub struct S2mClient {
-  client: zyn_common::client::Client<Stream, S2mHandshaker, S2mService>,
+  client: zyn_common::client::PooledClient<Stream, S2mHandshaker, S2mService>,
 }
 
 // === impl S2mClient ===
@@ -293,7 +293,7 @@ impl S2mClient {
 
     let handshaker = S2mHandshaker { shared_secret, heartbeat_interval: config.heartbeat_interval };
 
-    let client = zyn_common::client::Client::new(
+    let client = zyn_common::client::PooledClient::new(
       "s2m:client",
       zyn_common::client::Config {
         max_idle_connections: config.max_idle_connections,
