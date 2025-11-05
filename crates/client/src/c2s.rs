@@ -617,6 +617,30 @@ impl C2sClient {
     }
   }
 
+  /// Returns a stream of inbound messages from the server.
+  ///
+  /// This method provides access to unsolicited messages sent by the server that are not
+  /// responses to client requests (such as broadcasts from channels).
+  ///
+  /// # Returns
+  ///
+  /// Returns a stream of `(Message, Option<PoolBuffer>)` tuples where:
+  /// * `Message` - The message received from the server
+  /// * `Option<PoolBuffer>` - Optional payload data associated with the message
+  ///
+  /// # Important
+  ///
+  /// This method can only be called **once** per `C2sClient` instance. Subsequent calls will panic.
+  /// This is because the method takes ownership of the internal receiver, ensuring there is only
+  /// one consumer of inbound messages.
+  ///
+  /// # Panics
+  ///
+  /// Panics if called more than once on the same `C2sClient` instance.
+  pub async fn inbound_stream(&self) -> impl futures::Stream<Item = (Message, Option<PoolBuffer>)> {
+    self.client.inbound_stream().await
+  }
+
   /// Shuts down the client and closes all connections.
   ///
   /// This method gracefully shuts down the client, closing all active connections

@@ -48,4 +48,4 @@
 pub mod c2s;
 
 // Re-export main client types for convenience
-pub use c2s::{C2sClient, C2sSessionExtraInfo};
+pub use c2s::{AuthMethod, C2sClient, C2sConfig, C2sSessionExtraInfo};
