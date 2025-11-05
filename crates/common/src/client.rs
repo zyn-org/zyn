@@ -113,12 +113,13 @@ where
   async fn handshake(&self, stream: &mut S) -> anyhow::Result<(SessionInfo, Self::SessionExtraInfo)>;
 }
 
-/// A Zyn client with a single persistent connection.
+/// A Zyn client that supports both single connection and connection pooling modes.
 ///
-/// This client maintains one long-lived connection to the server and multiplexes
-/// all requests over it.
+/// The mode is automatically determined by the `max_idle_connections` configuration:
+/// - When `max_idle_connections == 1`: Uses a single persistent connection
+/// - When `max_idle_connections > 1`: Uses connection pooling
 ///
-/// The connection is created lazily on first use and automatically reconnects
+/// Connections are created lazily on first use and automatically reconnect
 /// on failure with exponential backoff.
 #[derive(Debug)]
 pub struct Client<S, HS, ST>(Arc<Mutex<ClientInner<S, HS, ST>>>)
@@ -146,7 +147,10 @@ where
   HS: Handshaker<S>,
   ST: Service,
 {
-  /// Creates a new `Client` instance with a single persistent connection.
+  /// Creates a new `Client` instance.
+  ///
+  /// The client automatically uses a single persistent connection when `max_idle_connections` is 1,
+  /// or connection pooling when `max_idle_connections` is greater than 1.
   ///
   /// # Arguments
   ///
@@ -164,7 +168,11 @@ where
     dialer: Arc<dyn Dialer<Stream = S>>,
     handshaker: HS,
   ) -> anyhow::Result<Self> {
-    let inner = ClientInner::new(client_id, config, dialer, handshaker)?;
+    let inner = if config.max_idle_connections == 1 {
+      ClientInner::new(client_id, config, dialer, handshaker)?
+    } else {
+      ClientInner::new_pooled(client_id, config, dialer, handshaker)?
+    };
     Ok(Self(Arc::new(Mutex::new(inner))))
   }
 
@@ -185,8 +193,13 @@ where
     payload_opt: Option<PoolBuffer>,
   ) -> anyhow::Result<JoinHandle<anyhow::Result<(Message, Option<PoolBuffer>)>>> {
     let mut inner = self.0.lock().await;
-    let conn = inner.get_or_create_connection().await?;
-    Ok(conn.send_message(message, payload_opt).await)
+    if inner.config.max_idle_connections == 1 {
+      let conn = inner.get_or_create_connection().await?;
+      Ok(conn.send_message(message, payload_opt).await)
+    } else {
+      let conn = inner.get_connection().await?;
+      Ok(conn.send_message(message, payload_opt).await)
+    }
   }
 
   /// Retrieves the current session information, including extra info from the handshake.
@@ -200,15 +213,20 @@ where
   /// Returns an error if no valid connection could be established.
   pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, HS::SessionExtraInfo)> {
     let mut inner = self.0.lock().await;
-    let conn = inner.get_or_create_connection().await?;
-    Ok(conn.session_info.as_ref().unwrap().clone())
+    if inner.config.max_idle_connections == 1 {
+      let conn = inner.get_or_create_connection().await?;
+      Ok(conn.session_info.as_ref().unwrap().clone())
+    } else {
+      let conn = inner.get_connection().await?;
+      Ok(conn.session_info.as_ref().unwrap().clone())
+    }
   }
 
-  /// Gracefully shuts down the client by terminating the connection.
+  /// Gracefully shuts down the client by terminating connections.
   ///
   /// # Returns
   ///
-  /// Returns `Ok(())` once the connection is closed.
+  /// Returns `Ok(())` once all connections are closed.
   pub async fn shutdown(&self) -> anyhow::Result<()> {
     let mut inner = self.0.lock().await;
     inner.shutdown().await
@@ -249,6 +267,8 @@ where
   }
 }
 
+// === ClientInner ===
+
 pub struct ClientInner<S, HS, ST>
 where
   S: AsyncRead + AsyncWrite + Send + Sync + 'static,
@@ -273,14 +293,17 @@ where
   /// The handshaker used to perform the handshake with the server.
   handshaker: HS,
 
-  /// Single persistent connection (lazily initialized).
-  conn: Option<Arc<ClientConn<S, HS, ST>>>,
-
   /// Sender for inbound messages.
   inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
 
   /// Receiver for inbound messages.
   inbound_rx: Option<mpsc::Receiver<(Message, Option<PoolBuffer>)>>,
+
+  /// Single persistent connection (lazily initialized).
+  conn: Option<Arc<ClientConn<S, HS, ST>>>,
+
+  /// Connection pool for managing connections (only used when max_idle_connections > 1).
+  conn_pool: Option<managed::Pool<ClientConnManager<S, HS, ST>>>,
 
   /// Phantom data for the service type.
   _service_type: PhantomData<ST>,
@@ -326,11 +349,58 @@ where
       conn: None,
       inbound_tx,
       inbound_rx: Some(inbound_rx),
+      conn_pool: None,
+      _service_type: PhantomData,
+    })
+  }
+
+  fn new_pooled(
+    client_id: impl Into<String>,
+    config: Config,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> anyhow::Result<Self> {
+    let max_idle_connections = config.max_idle_connections;
+    let connect_timeout = config.connect_timeout;
+
+    let arc_client_id = Arc::new(client_id.into());
+    let arc_config = Arc::new(config);
+
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
+
+    let conn_pool = managed::Pool::builder(ClientConnManager::new(
+      arc_client_id.clone(),
+      arc_config.clone(),
+      dialer.clone(),
+      handshaker.clone(),
+      inbound_tx.clone(),
+    ))
+    .max_size(max_idle_connections)
+    .create_timeout(Some(connect_timeout))
+    .runtime(Runtime::Tokio1)
+    .build()?;
+
+    Ok(Self {
+      client_id: arc_client_id,
+      config: arc_config,
+      next_id: AtomicU16::new(1),
+      next_conn_id: AtomicU16::new(1),
+      dialer,
+      handshaker,
+      conn: None,
+      inbound_tx,
+      inbound_rx: Some(inbound_rx),
+      conn_pool: Some(conn_pool),
       _service_type: PhantomData,
     })
   }
 
   async fn get_or_create_connection(&mut self) -> anyhow::Result<Arc<ClientConn<S, HS, ST>>> {
+    debug_assert!(
+      self.config.max_idle_connections == 1,
+      "get_or_create_connection should only be called in single connection mode (max_idle_connections == 1)"
+    );
+
     // Fast path: return existing connection if healthy
     if let Some(conn) = &self.conn
       && !conn.is_unhealthy()
@@ -353,6 +423,42 @@ where
     Ok(conn)
   }
 
+  async fn get_connection(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
+    debug_assert!(
+      self.config.max_idle_connections > 1,
+      "get_connection should only be called in pooled mode (max_idle_connections > 1)"
+    );
+
+    let conn_pool = self.conn_pool.as_ref().expect("conn_pool must be set for pooled mode");
+
+    ExponentialBackoff::new()
+      .with_initial_delay(self.config.backoff_initial_delay)
+      .with_max_delay(self.config.backoff_max_delay)
+      .with_jitter(true)
+      .with_max_attempts(self.config.backoff_max_retries)
+      .retry_with_backoff(|| async { self.get_connection_from_pool(conn_pool).await })
+      .await
+  }
+
+  async fn get_connection_from_pool(
+    &self,
+    conn_pool: &managed::Pool<ClientConnManager<S, HS, ST>>,
+  ) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
+    let get_pool_conn = || async { conn_pool.get().await.map_err(|e| anyhow!(" {}", e)) };
+
+    match get_pool_conn().await {
+      Ok(conn) => {
+        if !conn.is_unhealthy() {
+          return Ok(conn);
+        }
+        // Filter out unhealthy connections and retry.
+        conn_pool.retain(|c, _| !c.is_unhealthy());
+        get_pool_conn().await
+      },
+      Err(e) => Err(e),
+    }
+  }
+
   async fn create_connection(&self) -> anyhow::Result<ClientConn<S, HS, ST>> {
     let conn_id = self.next_conn_id.fetch_add(1, atomic::Ordering::SeqCst);
 
@@ -371,264 +477,21 @@ where
   }
 
   async fn shutdown(&mut self) -> anyhow::Result<()> {
-    if let Some(conn) = &self.conn {
-      conn.shutdown().await?;
+    if self.config.max_idle_connections == 1 {
+      if let Some(conn) = &self.conn {
+        conn.shutdown().await?;
+      }
+      Ok(())
+    } else {
+      if let Some(conn_pool) = &self.conn_pool {
+        conn_pool.retain(|_, _| false);
+        conn_pool.close();
+      }
+      Ok(())
     }
-    Ok(())
   }
 
   fn next_id(&self) -> u16 {
-    self.next_id.fetch_add(1, atomic::Ordering::SeqCst) + 1
-  }
-}
-
-/// A Zyn client with connection pooling.
-///
-/// This client maintains a pool of connections to the server and distributes
-/// requests across them.
-#[derive(Debug)]
-pub struct PooledClient<S, HS, ST>(Arc<Mutex<PooledClientInner<S, HS, ST>>>)
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service;
-
-impl<S, HS, ST> Clone for PooledClient<S, HS, ST>
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service,
-{
-  fn clone(&self) -> Self {
-    Self(Arc::clone(&self.0))
-  }
-}
-
-// === impl PooledClient ===
-
-impl<S, HS, ST> PooledClient<S, HS, ST>
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service,
-{
-  /// Creates a new `PooledClient` instance with the provided client ID, configuration, and handshaker.
-  ///
-  /// # Arguments
-  ///
-  /// * `client_id` - A string-like identifier for the client.
-  /// * `config` - Configuration settings for the client.
-  /// * `handshaker` - An implementation of the `Handshaker` trait to perform the handshake.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if the connection pool cannot be created.
-  pub fn new(
-    client_id: impl Into<String>,
-    config: Config,
-    dialer: Arc<dyn Dialer<Stream = S>>,
-    handshaker: HS,
-  ) -> anyhow::Result<Self> {
-    let inner = PooledClientInner::new(client_id, config, dialer, handshaker)?;
-    Ok(Self(Arc::new(Mutex::new(inner))))
-  }
-
-  /// Sends a message to the server and returns a `JoinHandle` to await the response.
-  ///
-  /// # Arguments
-  ///
-  /// * `message` - A `Message` instance that must contain a correlation ID.
-  /// * `payload_opt` - An optional `PoolBuffer` containing payload data to be sent
-  ///   along with the message. Use `None` for messages without payload data.
-  ///
-  /// # Returns
-  ///
-  /// A handle to a task that resolves to the response `Message` and an optional payload.
-  pub async fn send_message(
-    &self,
-    message: Message,
-    payload_opt: Option<PoolBuffer>,
-  ) -> anyhow::Result<JoinHandle<anyhow::Result<(Message, Option<PoolBuffer>)>>> {
-    let inner = self.0.lock().await;
-    let conn = inner.get_connection().await?;
-    Ok(conn.send_message(message, payload_opt).await)
-  }
-
-  /// Retrieves the current session information, including extra info from the handshake.
-  ///
-  /// # Returns
-  ///
-  /// A tuple of `(SessionInfo, H::SessionExtraInfo)` if the handshake was successful.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if no valid connection could be established.
-  pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, HS::SessionExtraInfo)> {
-    let inner = self.0.lock().await;
-    let conn = inner.get_connection().await?;
-    Ok(conn.session_info.as_ref().unwrap().clone())
-  }
-
-  /// Gracefully shuts down the client by terminating all pooled connections.
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` once the pool is emptied and closed.
-  pub async fn shutdown(&self) -> anyhow::Result<()> {
-    let inner = self.0.lock().await;
-    inner.shutdown().await
-  }
-
-  /// Generates the next unique correlation ID for message tracking.
-  ///
-  /// This method provides a monotonically increasing 16-bit identifier that can be used
-  /// to correlate requests with their corresponding responses. The ID counter wraps around
-  /// to 0 after reaching the maximum value of `u16::MAX`.
-  ///
-  /// # Returns
-  ///
-  /// A unique `u16` correlation ID that can be used for message tracking.
-  pub async fn next_id(&self) -> u16 {
-    let inner = self.0.lock().await;
-    inner.next_id().await
-  }
-
-  /// Returns a stream of inbound messages from the server.
-  ///
-  /// This method provides access to unsolicited messages sent by the server that are not
-  /// responses to client requests.
-  ///
-  /// # Multiplexing
-  ///
-  /// The returned stream multiplexes inbound messages from all active connections in the
-  /// connection pool. Each connection shares the same underlying channel sender, so messages
-  /// from any connection will appear in this single stream.
-  ///
-  /// # Important
-  ///
-  /// This method can only be called **once** per `Client` instance. Subsequent calls will panic.
-  /// This is because the method takes ownership of the internal receiver, ensuring there is only
-  /// one consumer of inbound messages.
-  ///
-  /// # Panics
-  ///
-  /// Panics if called more than once on the same `PooledClient` instance.
-  pub async fn inbound_stream(&self) -> ReceiverStream<(Message, Option<PoolBuffer>)> {
-    let mut inner = self.0.lock().await;
-    let rx = inner.inbound_rx.take().expect("inbound_stream can only be called once");
-    ReceiverStream::new(rx)
-  }
-}
-
-pub struct PooledClientInner<S, HS, ST>
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service,
-{
-  /// The client configuration.
-  config: Arc<Config>,
-
-  /// The next correlation id.
-  next_id: AtomicU16,
-
-  /// Connection pool for managing connections.
-  conn_pool: managed::Pool<ClientConnManager<S, HS, ST>>,
-
-  /// Receiver for inbound messages.
-  inbound_rx: Option<mpsc::Receiver<(Message, Option<PoolBuffer>)>>,
-
-  /// Phantom data for the service type.
-  _service_type: PhantomData<ST>,
-}
-
-impl<S, HS, ST> fmt::Debug for PooledClientInner<S, HS, ST>
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service,
-{
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("PooledClientInner")
-      .field("config", &self.config)
-      .field("conn_pool", &format_args!("managed::Pool(max_size: {})", self.config.max_idle_connections))
-      .finish()
-  }
-}
-
-// === impl PooledClientInner ===
-
-impl<S, HS, ST> PooledClientInner<S, HS, ST>
-where
-  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
-  HS: Handshaker<S>,
-  ST: Service,
-{
-  fn new(
-    client_id: impl Into<String>,
-    config: Config,
-    dialer: Arc<dyn Dialer<Stream = S>>,
-    handshaker: HS,
-  ) -> anyhow::Result<Self> {
-    let max_idle_connections = config.max_idle_connections;
-    let connect_timeout = config.connect_timeout;
-
-    let arc_client_id = Arc::new(client_id.into());
-    let arc_config = Arc::new(config);
-
-    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
-
-    let conn_pool =
-      managed::Pool::builder(ClientConnManager::new(arc_client_id, arc_config.clone(), dialer, handshaker, inbound_tx))
-        .max_size(max_idle_connections)
-        .create_timeout(Some(connect_timeout))
-        .runtime(Runtime::Tokio1)
-        .build()?;
-
-    Ok(Self {
-      config: arc_config.clone(),
-      next_id: AtomicU16::new(1),
-      inbound_rx: Some(inbound_rx),
-      conn_pool,
-      _service_type: PhantomData,
-    })
-  }
-
-  async fn get_connection(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
-    ExponentialBackoff::new()
-      .with_initial_delay(self.config.backoff_initial_delay)
-      .with_max_delay(self.config.backoff_max_delay)
-      .with_jitter(true)
-      .with_max_attempts(self.config.backoff_max_retries)
-      .retry_with_backoff(|| async { self.get_connection_from_pool().await })
-      .await
-  }
-
-  async fn get_connection_from_pool(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
-    let get_pool_conn = || async { self.conn_pool.get().await.map_err(|e| anyhow!(" {}", e)) };
-
-    match get_pool_conn().await {
-      Ok(conn) => {
-        if !conn.is_unhealthy() {
-          return Ok(conn);
-        }
-        // Filter out unhealthy connections and retry.
-        self.conn_pool.retain(|c, _| !c.is_unhealthy());
-        get_pool_conn().await
-      },
-      Err(e) => Err(e),
-    }
-  }
-
-  async fn shutdown(&self) -> anyhow::Result<()> {
-    // Remove all connections from the pool.
-    self.conn_pool.retain(|_, _| false);
-    self.conn_pool.close();
-
-    Ok(())
-  }
-
-  async fn next_id(&self) -> u16 {
     self.next_id.fetch_add(1, atomic::Ordering::SeqCst) + 1
   }
 }
@@ -841,7 +704,7 @@ where
   /// Unique connection ID.
   conn_id: u16,
 
-  /// The configuration for the modulator client.
+  /// The configuration for the client.
   config: Arc<Config>,
 
   /// The dialer used to establish connections.
