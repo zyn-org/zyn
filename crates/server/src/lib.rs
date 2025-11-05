@@ -202,18 +202,18 @@ async fn wait_for_stop_signal() -> anyhow::Result<()> {
 }
 
 fn set_file_descriptor_limit(max_connections: u32) -> anyhow::Result<()> {
-  // Calculate desired fd limit: max_connections + cluster_overhead (25% of max) + 32 (internal usage)
-  let cluster_overhead = max_connections / 4; // 25% overhead for cluster operations
-  let desired_fd_limit = max_connections + cluster_overhead + 32;
+  // Calculate desired fd limit: max_connections + overhead (25% of max) + 32 (internal usage)
+  let overhead = max_connections / 4; // 25% overhead
+  let desired_fd_limit = max_connections + overhead + 32;
 
-  let (_soft, hard) = rlimit::getrlimit(Resource::NOFILE)?;
+  let (soft, hard) = rlimit::getrlimit(Resource::NOFILE)?;
 
-  let new_limit = std::cmp::min(desired_fd_limit as u64, hard);
+  let new_soft_limit = std::cmp::min(desired_fd_limit as u64, hard);
 
-  rlimit::setrlimit(Resource::NOFILE, new_limit, hard)
+  rlimit::setrlimit(Resource::NOFILE, new_soft_limit, hard)
     .map_err(|err| anyhow::anyhow!("failed to set file descriptor limit: {}", err))?;
 
-  info!(new_limit, "set file descriptor limit");
+  info!(new_soft_limit, soft_limit = soft, hard_limit = hard, "set file descriptor limit");
 
   Ok(())
 }
