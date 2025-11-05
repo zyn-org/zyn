@@ -113,6 +113,13 @@ where
   async fn handshake(&self, stream: &mut S) -> anyhow::Result<(SessionInfo, Self::SessionExtraInfo)>;
 }
 
+/// A Zyn client with a single persistent connection.
+///
+/// This client maintains one long-lived connection to the server and multiplexes
+/// all requests over it.
+///
+/// The connection is created lazily on first use and automatically reconnects
+/// on failure with exponential backoff.
 #[derive(Debug)]
 pub struct Client<S, HS, ST>(Arc<Mutex<ClientInner<S, HS, ST>>>)
 where
@@ -139,17 +146,18 @@ where
   HS: Handshaker<S>,
   ST: Service,
 {
-  /// Creates a new `Client` instance with the provided client ID, configuration, and handshaker.
+  /// Creates a new `Client` instance with a single persistent connection.
   ///
   /// # Arguments
   ///
   /// * `client_id` - A string-like identifier for the client.
   /// * `config` - Configuration settings for the client.
+  /// * `dialer` - A dialer for establishing connections.
   /// * `handshaker` - An implementation of the `Handshaker` trait to perform the handshake.
   ///
   /// # Errors
   ///
-  /// Returns an error if the connection pool cannot be created.
+  /// Returns an error if the client cannot be initialized.
   pub fn new(
     client_id: impl Into<String>,
     config: Config,
@@ -176,8 +184,273 @@ where
     message: Message,
     payload_opt: Option<PoolBuffer>,
   ) -> anyhow::Result<JoinHandle<anyhow::Result<(Message, Option<PoolBuffer>)>>> {
+    let mut inner = self.0.lock().await;
+    let conn = inner.get_or_create_connection().await?;
+    Ok(conn.send_message(message, payload_opt).await)
+  }
+
+  /// Retrieves the current session information, including extra info from the handshake.
+  ///
+  /// # Returns
+  ///
+  /// A tuple of `(SessionInfo, H::SessionExtraInfo)` if the handshake was successful.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if no valid connection could be established.
+  pub async fn session_info(&self) -> anyhow::Result<(SessionInfo, HS::SessionExtraInfo)> {
+    let mut inner = self.0.lock().await;
+    let conn = inner.get_or_create_connection().await?;
+    Ok(conn.session_info.as_ref().unwrap().clone())
+  }
+
+  /// Gracefully shuts down the client by terminating the connection.
+  ///
+  /// # Returns
+  ///
+  /// Returns `Ok(())` once the connection is closed.
+  pub async fn shutdown(&self) -> anyhow::Result<()> {
+    let mut inner = self.0.lock().await;
+    inner.shutdown().await
+  }
+
+  /// Generates the next unique correlation ID for message tracking.
+  ///
+  /// This method provides a monotonically increasing 16-bit identifier that can be used
+  /// to correlate requests with their corresponding responses. The ID counter wraps around
+  /// to 0 after reaching the maximum value of `u16::MAX`.
+  ///
+  /// # Returns
+  ///
+  /// A unique `u16` correlation ID that can be used for message tracking.
+  pub async fn next_id(&self) -> u16 {
     let inner = self.0.lock().await;
-    let mut conn = inner.get_connection().await?;
+    inner.next_id()
+  }
+
+  /// Returns a stream of inbound messages from the server.
+  ///
+  /// This method provides access to unsolicited messages sent by the server that are not
+  /// responses to client requests.
+  ///
+  /// # Important
+  ///
+  /// This method can only be called **once** per `Client` instance. Subsequent calls will panic.
+  /// This is because the method takes ownership of the internal receiver, ensuring there is only
+  /// one consumer of inbound messages.
+  ///
+  /// # Panics
+  ///
+  /// Panics if called more than once on the same `Client` instance.
+  pub async fn inbound_stream(&self) -> ReceiverStream<(Message, Option<PoolBuffer>)> {
+    let mut inner = self.0.lock().await;
+    let rx = inner.inbound_rx.take().expect("inbound_stream can only be called once");
+    ReceiverStream::new(rx)
+  }
+}
+
+pub struct ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  /// The client ID used to identify the client.
+  client_id: Arc<String>,
+
+  /// The client configuration.
+  config: Arc<Config>,
+
+  /// The next correlation id.
+  next_id: AtomicU16,
+
+  /// The next connection id.
+  next_conn_id: AtomicU16,
+
+  /// The dialer used to establish connections.
+  dialer: Arc<dyn Dialer<Stream = S>>,
+
+  /// The handshaker used to perform the handshake with the server.
+  handshaker: HS,
+
+  /// Single persistent connection (lazily initialized).
+  conn: Option<Arc<ClientConn<S, HS, ST>>>,
+
+  /// Sender for inbound messages.
+  inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
+
+  /// Receiver for inbound messages.
+  inbound_rx: Option<mpsc::Receiver<(Message, Option<PoolBuffer>)>>,
+
+  /// Phantom data for the service type.
+  _service_type: PhantomData<ST>,
+}
+
+impl<S, HS, ST> fmt::Debug for ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("ClientInner").field("client_id", &self.client_id).field("config", &self.config).finish()
+  }
+}
+
+// === impl ClientInner ===
+
+impl<S, HS, ST> ClientInner<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn new(
+    client_id: impl Into<String>,
+    config: Config,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> anyhow::Result<Self> {
+    let arc_client_id = Arc::new(client_id.into());
+    let arc_config = Arc::new(config);
+
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
+
+    Ok(Self {
+      client_id: arc_client_id,
+      config: arc_config,
+      next_id: AtomicU16::new(1),
+      next_conn_id: AtomicU16::new(1),
+      dialer,
+      handshaker,
+      conn: None,
+      inbound_tx,
+      inbound_rx: Some(inbound_rx),
+      _service_type: PhantomData,
+    })
+  }
+
+  async fn get_or_create_connection(&mut self) -> anyhow::Result<Arc<ClientConn<S, HS, ST>>> {
+    // Fast path: return existing connection if healthy
+    if let Some(conn) = &self.conn
+      && !conn.is_unhealthy()
+    {
+      return Ok(conn.clone());
+    }
+
+    // Slow path: create new connection with retry logic
+    let conn = ExponentialBackoff::new()
+      .with_initial_delay(self.config.backoff_initial_delay)
+      .with_max_delay(self.config.backoff_max_delay)
+      .with_jitter(true)
+      .with_max_attempts(self.config.backoff_max_retries)
+      .retry_with_backoff(|| async { self.create_connection().await })
+      .await?;
+
+    let conn = Arc::new(conn);
+    self.conn = Some(conn.clone());
+
+    Ok(conn)
+  }
+
+  async fn create_connection(&self) -> anyhow::Result<ClientConn<S, HS, ST>> {
+    let conn_id = self.next_conn_id.fetch_add(1, atomic::Ordering::SeqCst);
+
+    let mut conn = ClientConn::<S, HS, ST>::new(
+      self.client_id.clone(),
+      conn_id,
+      self.config.clone(),
+      self.dialer.clone(),
+      self.handshaker.clone(),
+      self.inbound_tx.clone(),
+    );
+
+    conn.connect().await?;
+
+    Ok(conn)
+  }
+
+  async fn shutdown(&mut self) -> anyhow::Result<()> {
+    if let Some(conn) = &self.conn {
+      conn.shutdown().await?;
+    }
+    Ok(())
+  }
+
+  fn next_id(&self) -> u16 {
+    self.next_id.fetch_add(1, atomic::Ordering::SeqCst) + 1
+  }
+}
+
+/// A Zyn client with connection pooling.
+///
+/// This client maintains a pool of connections to the server and distributes
+/// requests across them.
+#[derive(Debug)]
+pub struct PooledClient<S, HS, ST>(Arc<Mutex<PooledClientInner<S, HS, ST>>>)
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service;
+
+impl<S, HS, ST> Clone for PooledClient<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  fn clone(&self) -> Self {
+    Self(Arc::clone(&self.0))
+  }
+}
+
+// === impl PooledClient ===
+
+impl<S, HS, ST> PooledClient<S, HS, ST>
+where
+  S: AsyncRead + AsyncWrite + Send + Sync + 'static,
+  HS: Handshaker<S>,
+  ST: Service,
+{
+  /// Creates a new `PooledClient` instance with the provided client ID, configuration, and handshaker.
+  ///
+  /// # Arguments
+  ///
+  /// * `client_id` - A string-like identifier for the client.
+  /// * `config` - Configuration settings for the client.
+  /// * `handshaker` - An implementation of the `Handshaker` trait to perform the handshake.
+  ///
+  /// # Errors
+  ///
+  /// Returns an error if the connection pool cannot be created.
+  pub fn new(
+    client_id: impl Into<String>,
+    config: Config,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+  ) -> anyhow::Result<Self> {
+    let inner = PooledClientInner::new(client_id, config, dialer, handshaker)?;
+    Ok(Self(Arc::new(Mutex::new(inner))))
+  }
+
+  /// Sends a message to the server and returns a `JoinHandle` to await the response.
+  ///
+  /// # Arguments
+  ///
+  /// * `message` - A `Message` instance that must contain a correlation ID.
+  /// * `payload_opt` - An optional `PoolBuffer` containing payload data to be sent
+  ///   along with the message. Use `None` for messages without payload data.
+  ///
+  /// # Returns
+  ///
+  /// A handle to a task that resolves to the response `Message` and an optional payload.
+  pub async fn send_message(
+    &self,
+    message: Message,
+    payload_opt: Option<PoolBuffer>,
+  ) -> anyhow::Result<JoinHandle<anyhow::Result<(Message, Option<PoolBuffer>)>>> {
+    let inner = self.0.lock().await;
+    let conn = inner.get_connection().await?;
     Ok(conn.send_message(message, payload_opt).await)
   }
 
@@ -239,7 +512,7 @@ where
   ///
   /// # Panics
   ///
-  /// Panics if called more than once on the same `Client` instance.
+  /// Panics if called more than once on the same `PooledClient` instance.
   pub async fn inbound_stream(&self) -> ReceiverStream<(Message, Option<PoolBuffer>)> {
     let mut inner = self.0.lock().await;
     let rx = inner.inbound_rx.take().expect("inbound_stream can only be called once");
@@ -247,19 +520,19 @@ where
   }
 }
 
-pub struct ClientInner<S, HS, ST>
+pub struct PooledClientInner<S, HS, ST>
 where
   S: AsyncRead + AsyncWrite + Send + Sync + 'static,
   HS: Handshaker<S>,
   ST: Service,
 {
-  /// The configuration for the modulator client.
+  /// The client configuration.
   config: Arc<Config>,
 
   /// The next correlation id.
   next_id: AtomicU16,
 
-  /// Connection pool for managing connections to the modulator server.
+  /// Connection pool for managing connections.
   conn_pool: managed::Pool<ClientConnManager<S, HS, ST>>,
 
   /// Receiver for inbound messages.
@@ -269,23 +542,23 @@ where
   _service_type: PhantomData<ST>,
 }
 
-impl<S, HS, ST> fmt::Debug for ClientInner<S, HS, ST>
+impl<S, HS, ST> fmt::Debug for PooledClientInner<S, HS, ST>
 where
   S: AsyncRead + AsyncWrite + Send + Sync + 'static,
   HS: Handshaker<S>,
   ST: Service,
 {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("ClientInner")
+    f.debug_struct("PooledClientInner")
       .field("config", &self.config)
       .field("conn_pool", &format_args!("managed::Pool(max_size: {})", self.config.max_idle_connections))
       .finish()
   }
 }
 
-// === impl ClientInner ===
+// === impl PooledClientInner ===
 
-impl<S, HS, ST> ClientInner<S, HS, ST>
+impl<S, HS, ST> PooledClientInner<S, HS, ST>
 where
   S: AsyncRead + AsyncWrite + Send + Sync + 'static,
   HS: Handshaker<S>,
@@ -705,7 +978,7 @@ where
     Ok(())
   }
 
-  async fn shutdown(&mut self) -> anyhow::Result<()> {
+  async fn shutdown(&self) -> anyhow::Result<()> {
     // Signal shutdown to all tasks
     self.shutdown_token.cancel();
 
@@ -717,7 +990,7 @@ where
   }
 
   async fn send_message(
-    &mut self,
+    &self,
     message: Message,
     payload_opt: Option<PoolBuffer>,
   ) -> JoinHandle<anyhow::Result<(Message, Option<PoolBuffer>)>> {
