@@ -2,23 +2,17 @@
 
 use std::net::SocketAddr;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
-use tracing::{error, info};
-
-/// Benchmark scenarios
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum Scenario {
-  /// Simple broadcast scenario - all clients send messages to a shared channel
-  Broadcast,
-  /// Pub/sub scenario - separate publishers and subscribers
-  PubSub,
-  /// Connection churn - clients constantly joining and leaving
-  Churn,
-  /// Mixed workload - realistic combination of operations
-  Mixed,
-}
+use clap::Parser;
+use futures::StreamExt;
+use futures::future::join_all;
+use rand::prelude::*;
+use tracing::{error, info, warn};
+use zyn_client::c2s::{AuthMethod, C2sClient, C2sConfig};
+use zyn_util::pool::Pool;
+use zyn_util::string_atom::StringAtom;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
@@ -30,48 +24,21 @@ struct Cli {
   #[arg(short, long, default_value = "127.0.0.1:22622")]
   server: SocketAddr,
 
-  /// Number of concurrent clients to simulate
-  #[arg(short = 'n', long, default_value = "100")]
-  clients: usize,
+  /// Number of producer clients
+  #[arg(short = 'p', long, default_value = "1")]
+  producers: usize,
+
+  /// Number of consumer clients
+  #[arg(short = 'c', long, default_value = "10")]
+  consumers: usize,
 
   /// Duration to run the benchmark
   #[arg(short, long, default_value = "30s", value_parser = parse_duration)]
   duration: Duration,
 
-  /// Benchmark scenario to run
-  #[arg(short = 'S', long, value_enum, default_value = "broadcast")]
-  scenario: Scenario,
-
-  /// Message rate per client (messages per second, 0 = unlimited)
-  #[arg(short, long, default_value = "0")]
-  rate: u64,
-
-  /// Output format
-  #[arg(short, long, value_enum, default_value = "human")]
-  output: OutputFormat,
-
-  /// Channel name to use for testing
-  #[arg(long, default_value = "benchmark")]
-  channel: String,
-
-  /// Username prefix for test clients
-  #[arg(long, default_value = "bench_user")]
-  username_prefix: String,
-
-  /// Size of message payload in bytes
-  #[arg(long, default_value = "1024")]
-  payload_size: usize,
-}
-
-/// Output format for results
-#[derive(Debug, Clone, Copy, ValueEnum)]
-enum OutputFormat {
-  /// Human-readable output
-  Human,
-  /// JSON output
-  Json,
-  /// CSV output
-  Csv,
+  /// Maximum size of message payload in bytes
+  #[arg(long, default_value = "16384")]
+  max_payload_size: usize,
 }
 
 /// Parse duration from string (supports: 30s, 5m, 1h)
@@ -99,10 +66,9 @@ async fn main() -> Result<()> {
 
   info!("starting zyn-bench");
   info!("server: {}", cli.server);
-  info!("clients: {}", cli.clients);
+  info!("producer(s): {}", cli.producers);
+  info!("consumer(s): {}", cli.consumers);
   info!("duration: {:?}", cli.duration);
-  info!("scenario: {:?}", cli.scenario);
-  info!("channel: {}", cli.channel);
 
   // Run the benchmark
   match run_benchmark(cli).await {
@@ -127,6 +93,12 @@ struct BenchmarkMetrics {
   successful_connections: usize,
   failed_connections: usize,
   errors: u64,
+  latency_histogram: Option<hdrhistogram::Histogram<u64>>,
+  // Producer/consumer specific metrics
+  producer_count: usize,
+  consumer_count: usize,
+  successful_producers: usize,
+  successful_consumers: usize,
 }
 
 impl BenchmarkMetrics {
@@ -138,6 +110,11 @@ impl BenchmarkMetrics {
       successful_connections: 0,
       failed_connections: 0,
       errors: 0,
+      latency_histogram: None,
+      producer_count: 0,
+      consumer_count: 0,
+      successful_producers: 0,
+      successful_consumers: 0,
     }
   }
 
@@ -158,64 +135,362 @@ impl BenchmarkMetrics {
   }
 }
 
+/// Spawns inbound message drainer tasks for all clients.
+///
+/// Returns a vector of spawned tokio task handles that resolve to message counts.
+async fn spawn_inbound_drainers(
+  clients: &[C2sClient],
+  cancel_token: &CancellationToken,
+) -> Vec<tokio::task::JoinHandle<u64>> {
+  let mut drainer_tasks = Vec::with_capacity(clients.len());
+
+  for client in clients.iter() {
+    let mut inbound_stream = client.inbound_stream().await;
+    let token_clone = cancel_token.clone();
+
+    let drainer_task = tokio::spawn(async move {
+      let mut count = 0u64;
+      loop {
+        tokio::select! {
+          msg = inbound_stream.next() => {
+            match msg {
+              Some((message, _payload)) => {
+                match &message {
+                    zyn_protocol::Message::Error(err) => warn!("received error message: {:?}", err),
+                    zyn_protocol::Message::Message{ .. } => count += 1,
+                    _ => {}
+                }
+              },
+              None => break, // Stream ended naturally
+            }
+          },
+          _ = token_clone.cancelled() => {
+            // Cancellation requested
+            break;
+          }
+        }
+      }
+      count
+    });
+
+    drainer_tasks.push(drainer_task);
+  }
+
+  drainer_tasks
+}
+
+/// Gracefully leaves a channel for all clients.
+///
+/// Returns the number of clients that successfully left the channel.
+async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) -> usize {
+  info!("  - clients leaving channel...");
+
+  let mut leave_tasks = Vec::new();
+
+  for client in clients.iter() {
+    let ch = channel.clone();
+
+    let leave_future = async move {
+      match client.leave_channel(ch).await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+          warn!("client failed to leave channel: {}", e);
+          Err(e)
+        },
+      }
+    };
+
+    leave_tasks.push(leave_future);
+  }
+
+  // Wait for all clients to leave
+  let leave_results = join_all(leave_tasks).await;
+  let successful_leaves = leave_results.iter().filter(|r| r.is_ok()).count();
+  info!("  - {}/{} clients left channel successfully", successful_leaves, clients.len());
+
+  successful_leaves
+}
+
+/// Joins clients to a channel.
+///
+/// Returns the channel name on success.
+async fn create_and_join_channel(clients: &[C2sClient]) -> Result<StringAtom> {
+  // Create a new channel
+  let channel = match clients[0].join_new_channel().await {
+    Ok(ch) => {
+      info!("  - channel created: {}", ch);
+      ch
+    },
+    Err(e) => {
+      error!("failed to create channel: {}", e);
+      anyhow::bail!("failed to create channel: {}", e);
+    },
+  };
+
+  // Remaining clients join the channel
+  if clients.len() > 1 {
+    info!("  - remaining {} clients joining channel '{}'...", clients.len() - 1, channel);
+
+    let mut join_tasks = Vec::new();
+    for client in clients.iter().skip(1) {
+      let ch = channel.clone();
+
+      let join_future = async move {
+        match client.join_channel(ch).await {
+          Ok(_) => Ok(()),
+          Err(e) => {
+            warn!("client failed to join channel: {}", e);
+            Err(e)
+          },
+        }
+      };
+
+      join_tasks.push(join_future);
+    }
+
+    // Wait for all clients to join
+    let join_results = join_all(join_tasks).await;
+
+    let successful_joins = join_results.iter().filter(|r| r.is_ok()).count();
+    info!("  - {}/{} clients joined channel successfully", successful_joins, clients.len() - 1);
+  }
+
+  Ok(channel)
+}
+
+/// Creates multiple clients with the given configuration.
+///
+/// Returns a tuple of (clients, successful_count, failed_count).
+fn create_clients(config: &C2sConfig, count: usize, client_type: &str) -> (Vec<C2sClient>, usize, usize) {
+  info!("  - creating {} {} clients", count, client_type);
+
+  let mut clients = Vec::with_capacity(count);
+  let mut successful = 0;
+  let mut failed = 0;
+
+  for i in 0..count {
+    let username = format!("bench_{}_{}", client_type, i);
+    let auth_method = AuthMethod::Identify { username: username.as_str().into() };
+
+    match C2sClient::new_with_insecure_tls(config.clone(), auth_method) {
+      Ok(client) => {
+        clients.push(client);
+        successful += 1;
+      },
+      Err(e) => {
+        warn!("failed to create client {}: {}", username, e);
+        failed += 1;
+      },
+    }
+  }
+
+  info!("  - {}/{} {} clients successfully created", successful, count, client_type);
+
+  (clients, successful, failed)
+}
+
+/// Broadcasts messages from all clients for the specified duration.
+///
+/// Each client continuously broadcasts messages to the channel and waits for acknowledgment.
+/// Returns the total number of messages successfully sent and a histogram of latencies.
+async fn broadcast_messages(
+  clients: &[C2sClient],
+  channel: StringAtom,
+  duration: Duration,
+  max_payload_size: usize,
+) -> (u64, hdrhistogram::Histogram<u64>) {
+  info!("  - broadcasting messages for {:?}...", duration);
+
+  let deadline = tokio::time::Instant::now() + duration;
+  let mut broadcast_tasks = Vec::new();
+
+  let pool = Pool::new(clients.len(), max_payload_size);
+
+  // Create a histogram for tracking latencies (max 60s, 3 significant digits)
+  let histogram =
+    std::sync::Arc::new(std::sync::Mutex::new(hdrhistogram::Histogram::<u64>::new_with_bounds(1, 60_000, 3).unwrap()));
+
+  for (client_idx, client) in clients.iter().enumerate() {
+    let client = client.clone();
+    let ch = channel.clone();
+    let end_time = deadline;
+
+    let client_pool = pool.clone();
+    let hist = histogram.clone();
+
+    let task = tokio::spawn(async move {
+      let mut count = 0u64;
+
+      let mut message_idx = 0;
+
+      while tokio::time::Instant::now() < end_time {
+        // Create payload buffer with random size (at least 1 byte, at most max_payload_size)
+        let payload_buffer = client_pool.acquire_blocking();
+        let random_size = rand::rng().random_range(1..=max_payload_size);
+        let payload = payload_buffer.freeze(random_size);
+
+        // Measure broadcast latency
+        let start = tokio::time::Instant::now();
+
+        // Broadcast and wait for ack
+        match client.broadcast(ch.clone(), payload).await {
+          Ok(_) => {
+            let latency_ms = start.elapsed().as_millis() as u64;
+            if let Ok(mut h) = hist.lock() {
+              let _ = h.record(latency_ms);
+            }
+            count += 1;
+            message_idx += 1;
+          },
+          Err(e) => {
+            warn!("broadcast failed (client {}, message: {}): {}", client_idx, message_idx, e);
+            break;
+          },
+        }
+      }
+
+      count
+    });
+
+    broadcast_tasks.push(task);
+  }
+
+  // Wait for all broadcast tasks to complete
+  let results = join_all(broadcast_tasks).await;
+  let total_sent: u64 = results.into_iter().filter_map(|r| r.ok()).sum();
+
+  info!("  - total messages sent: {}", total_sent);
+
+  let final_histogram = std::sync::Arc::try_unwrap(histogram)
+    .map(|mutex| mutex.into_inner().unwrap())
+    .unwrap_or_else(|arc| arc.lock().unwrap().clone());
+
+  (total_sent, final_histogram)
+}
+
 /// Run the benchmark with the given configuration
 async fn run_benchmark(cli: Cli) -> Result<BenchmarkMetrics> {
   let mut metrics = BenchmarkMetrics::new();
 
-  info!("connecting {} clients to {}...", cli.clients, cli.server);
+  // Set producer/consumer counts
+  metrics.producer_count = cli.producers;
+  metrics.consumer_count = cli.consumers;
 
-  // TODO: Implement client connections
-  // TODO: Implement scenario execution
-  // TODO: Collect metrics
+  let total_clients = cli.producers + cli.consumers;
+  info!(
+    "connecting {} clients ({} producers, {} consumers) to {}...",
+    total_clients, cli.producers, cli.consumers, cli.server
+  );
 
-  match cli.scenario {
-    Scenario::Broadcast => {
-      info!("running broadcast scenario...");
-      run_broadcast_scenario(&cli, &mut metrics).await?;
-    },
-    Scenario::PubSub => {
-      info!("running pub/sub scenario...");
-      // TODO: Implement pub/sub scenario
-      anyhow::bail!("PubSub scenario not yet implemented");
-    },
-    Scenario::Churn => {
-      info!("running churn scenario...");
-      // TODO: Implement churn scenario
-      anyhow::bail!("Churn scenario not yet implemented");
-    },
-    Scenario::Mixed => {
-      info!("running mixed scenario...");
-      // TODO: Implement mixed scenario
-      anyhow::bail!("Mixed scenario not yet implemented");
-    },
-  }
+  // Print additional information
+  info!("max payload size: {} bytes", cli.max_payload_size);
 
-  metrics.total_duration = cli.duration;
+  let start_time = tokio::time::Instant::now();
+
+  info!("running benchmark...");
+  perform_benchmark(&cli, &mut metrics).await?;
+
+  metrics.total_duration = start_time.elapsed();
 
   Ok(metrics)
 }
 
-/// Run the broadcast scenario
-async fn run_broadcast_scenario(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<()> {
-  // TODO: Implement broadcast scenario
-  // 1. Connect all clients
-  // 2. Authenticate each client
-  // 3. Join the channel
-  // 4. Start sending/receiving messages
-  // 5. Collect metrics
+/// Run the benchmark with configurable producers and consumers
+async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<()> {
+  // Create client configuration
+  let client_config = C2sConfig {
+    address: cli.server.to_string(),
+    heartbeat_interval: Duration::from_secs(60),
+    connect_timeout: Duration::from_secs(5),
+    timeout: Duration::from_secs(5),
+    payload_read_timeout: Duration::from_secs(5),
+    backoff_initial_delay: Duration::from_millis(100),
+    backoff_max_delay: Duration::from_secs(30),
+    backoff_max_retries: 5,
+  };
 
-  info!("broadcast scenario will be implemented here");
-  info!("  - creating {} clients", cli.clients);
-  info!("  - joining channel '{}'", cli.channel);
-  info!("  - running for {:?}", cli.duration);
+  // Create producers
+  info!("creating {} producer clients...", cli.producers);
+  let (producer_clients, producer_successful, producer_failed) =
+    create_clients(&client_config, cli.producers, "producer");
 
-  // Placeholder: simulate some work
-  tokio::time::sleep(Duration::from_secs(1)).await;
+  // Create consumers
+  info!("creating {} consumer clients...", cli.consumers);
+  let (consumer_clients, consumer_successful, consumer_failed) =
+    create_clients(&client_config, cli.consumers, "consumer");
 
-  // Placeholder metrics
-  metrics.successful_connections = cli.clients;
-  metrics.total_messages_sent = 1000;
-  metrics.total_messages_received = 1000;
+  // Combine metrics from producers and consumers
+  let successful = producer_successful + consumer_successful;
+  let failed = producer_failed + consumer_failed;
+
+  metrics.successful_connections = successful;
+  metrics.failed_connections = failed;
+  metrics.successful_producers = producer_successful;
+  metrics.successful_consumers = consumer_successful;
+
+  // Check if we have any clients
+  if producer_clients.is_empty() && consumer_clients.is_empty() {
+    anyhow::bail!("no clients connected successfully");
+  }
+
+  if producer_clients.is_empty() {
+    anyhow::bail!("no producer clients connected successfully");
+  }
+
+  // Create a combined list of all clients
+  let mut all_clients = Vec::with_capacity(producer_clients.len() + consumer_clients.len());
+  all_clients.extend_from_slice(&producer_clients);
+  all_clients.extend_from_slice(&consumer_clients);
+
+  // Create a shared cancellation token for all drainer tasks
+  let drainer_cancel_token = CancellationToken::new();
+
+  // Spawn inbound message drainer tasks for all clients
+  let drainer_tasks = spawn_inbound_drainers(&all_clients, &drainer_cancel_token).await;
+
+  // Create channel and have all clients join
+  let channel = create_and_join_channel(&all_clients).await?;
+
+  // Only producers broadcast messages
+  let (messages_sent, latency_histogram) =
+    broadcast_messages(&producer_clients, channel.clone(), cli.duration, cli.max_payload_size).await;
+  metrics.total_messages_sent = messages_sent;
+  metrics.latency_histogram = Some(latency_histogram);
+
+  // Leave gracefully
+  let _ = leave_channel_gracefully(&all_clients, channel).await;
+
+  // Cleanup: shutdown all clients
+  info!("  - shutting down clients...");
+
+  // Shutdown all clients
+  for client in all_clients {
+    let _ = client.shutdown().await;
+  }
+
+  // Cancel all drainer tasks to ensure they complete
+  info!("  - cancelling message drainers...");
+  drainer_cancel_token.cancel();
+
+  // Wait for drainer tasks to complete and collect received message counts
+  info!("  - collecting received message counts...");
+  let mut total_received = 0u64;
+  for task in drainer_tasks {
+    match tokio::time::timeout(std::time::Duration::from_secs(5), task).await {
+      Ok(Ok(count)) => {
+        total_received += count;
+      },
+      Ok(Err(e)) => {
+        warn!("drainer task error: {}", e);
+      },
+      Err(_) => {
+        warn!("drainer task timed out after 5 seconds");
+      },
+    }
+  }
+
+  info!("  - total messages received: {}", total_received);
+  metrics.total_messages_received = total_received;
 
   Ok(())
 }
@@ -226,19 +501,44 @@ fn print_results(metrics: &BenchmarkMetrics) {
   println!("         Benchmark Results");
   println!("========================================");
   println!();
-  println!("Connections:");
-  println!("  Successful:  {}", metrics.successful_connections);
-  println!("  Failed:      {}", metrics.failed_connections);
+  println!("Client Configuration:");
+  println!("  Producers:   {} (successful: {})", metrics.producer_count, metrics.successful_producers);
+  println!("  Consumers:   {} (successful: {})", metrics.consumer_count, metrics.successful_consumers);
+  println!(
+    "  Total:       {} (successful: {}, failed: {})",
+    metrics.producer_count + metrics.consumer_count,
+    metrics.successful_connections,
+    metrics.failed_connections
+  );
   println!();
   println!("Messages:");
-  println!("  Sent:        {}", metrics.total_messages_sent);
-  println!("  Received:    {}", metrics.total_messages_received);
+  println!("  Produced:    {}", metrics.total_messages_sent);
+  println!("  Consumed:    {}", metrics.total_messages_received);
   println!("  Errors:      {}", metrics.errors);
   println!();
-  println!("Throughput:");
-  println!("  Sent:        {:.2} msg/s", metrics.throughput_sent());
-  println!("  Received:    {:.2} msg/s", metrics.throughput_received());
+  println!("Per-client Metrics:");
+  if metrics.successful_producers > 0 {
+    println!("  Msgs/producer: {:.2}", metrics.total_messages_sent as f64 / metrics.successful_producers as f64);
+  }
   println!();
+  println!("Throughput:");
+  println!("  Production:  {:.2} msg/s", metrics.throughput_sent());
+  println!("  Consumption: {:.2} msg/s", metrics.throughput_received());
+  println!();
+
+  if let Some(ref hist) = metrics.latency_histogram
+    && !hist.is_empty()
+  {
+    println!("Message Latency:");
+    println!("  Min:         {}ms", hist.min());
+    println!("  Max:         {}ms", hist.max());
+    println!("  Mean:        {:.2}ms", hist.mean());
+    println!("  P50:         {}ms", hist.value_at_quantile(0.50));
+    println!("  P95:         {}ms", hist.value_at_quantile(0.95));
+    println!("  P99:         {}ms", hist.value_at_quantile(0.99));
+    println!();
+  }
+
   println!("Duration:      {:.2}s", metrics.total_duration.as_secs_f64());
   println!("========================================");
 }

@@ -261,9 +261,6 @@ where
     tcp_stream: tokio::net::TcpStream,
     conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
   ) -> anyhow::Result<()> {
-    // Set the TCP_NODELAY option to disable Nagle's algorithm.
-    tcp_stream.set_nodelay(true)?;
-
     conn_mng.run(Stream::Tcp(tcp_stream)).await?;
 
     Ok(())

@@ -10,6 +10,7 @@ use anyhow::anyhow;
 use serde_derive::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
+use tokio_stream::wrappers::ReceiverStream;
 
 use zyn_common::client::{self, Handshaker, SessionInfo};
 use zyn_common::service::C2sService;
@@ -627,5 +628,24 @@ impl C2sClient {
   /// Returns an error if the shutdown process fails.
   pub async fn shutdown(&self) -> anyhow::Result<()> {
     self.client.shutdown().await
+  }
+
+  /// Returns a stream of inbound messages from the server.
+  ///
+  /// This method provides access to unsolicited messages sent by the server that are not
+  /// responses to client requests. These are typically broadcast messages from channels
+  /// the client has joined.
+  ///
+  /// # Important
+  ///
+  /// This method can only be called **once** per `Client` instance. Subsequent calls will panic.
+  /// This is because the method takes ownership of the internal receiver, ensuring there is only
+  /// one consumer of inbound messages.
+  ///
+  /// # Panics
+  ///
+  /// Panics if called more than once on the same `Client` instance.
+  pub async fn inbound_stream(&self) -> ReceiverStream<(Message, Option<PoolBuffer>)> {
+    self.client.inbound_stream().await
   }
 }

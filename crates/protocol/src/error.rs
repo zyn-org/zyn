@@ -32,7 +32,7 @@ pub enum ErrorReason {
   /// The server is in the process of shutting down and not accepting new requests.
   ServerShuttingDown,
   /// The message channel buffer is full and cannot accept new messages.
-  MessageChannelIsFull,
+  OutboundQueueIsFull,
   /// The requested operation is not allowed for the current user or context.
   NotAllowed,
   /// The requested feature or operation is not yet implemented.
@@ -74,7 +74,7 @@ impl From<ErrorReason> for &str {
       ErrorReason::PolicyViolation => "POLICY_VIOLATION",
       ErrorReason::ServerOverloaded => "SERVER_OVERLOADED",
       ErrorReason::ServerShuttingDown => "SERVER_SHUTTING_DOWN",
-      ErrorReason::MessageChannelIsFull => "MESSAGE_CHANNEL_FULL",
+      ErrorReason::OutboundQueueIsFull => "OUTBOUND_QUEUE_FULL",
       ErrorReason::NotAllowed => "NOT_ALLOWED",
       ErrorReason::NotImplemented => "NOT_IMPLEMENTED",
       ErrorReason::Timeout => "TIMEOUT",
@@ -107,14 +107,14 @@ impl FromStr for ErrorReason {
       "CHANNEL_IS_FULL" => Ok(ErrorReason::ChannelIsFull),
       "INTERNAL_SERVER_ERROR" => Ok(ErrorReason::InternalServerError),
       "FORBIDDEN" => Ok(ErrorReason::Forbidden),
-      "MESSAGE_CHANNEL_FULL" => Ok(ErrorReason::MessageChannelIsFull),
+      "OUTBOUND_QUEUE_FULL" => Ok(ErrorReason::OutboundQueueIsFull),
       "NONE" => Ok(ErrorReason::None),
       "NOT_ALLOWED" => Ok(ErrorReason::NotAllowed),
       "NOT_IMPLEMENTED" => Ok(ErrorReason::NotImplemented),
       "POLICY_VIOLATION" => Ok(ErrorReason::PolicyViolation),
       "SERVER_OVERLOADED" => Ok(ErrorReason::ServerOverloaded),
       "SERVER_SHUTTING_DOWN" => Ok(ErrorReason::ServerShuttingDown),
-      "SEND_CHANNEL_FULL" => Ok(ErrorReason::MessageChannelIsFull),
+      "SEND_CHANNEL_FULL" => Ok(ErrorReason::OutboundQueueIsFull),
       "TIMEOUT" => Ok(ErrorReason::Timeout),
       "UNAUTHORIZED" => Ok(ErrorReason::Unauthorized),
       "UNEXPECTED_MESSAGE" => Ok(ErrorReason::UnexpectedMessage),
