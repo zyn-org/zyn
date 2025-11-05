@@ -18,6 +18,7 @@ use tokio::sync::Semaphore;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, warn};
@@ -40,6 +41,8 @@ pub const TCP_NETWORK: &str = "tcp";
 pub const UNIX_NETWORK: &str = "unix";
 
 const WRITER_RECEIVER_CAPACITY: usize = 16 * 1024;
+
+const INBOUND_MESSAGE_RECEIVER_CAPACITY: usize = 16 * 1024;
 
 // Zyn client configuration.
 #[derive(Clone, Debug)]
@@ -216,6 +219,32 @@ where
     let inner = self.0.lock().await;
     inner.next_id().await
   }
+
+  /// Returns a stream of inbound messages from the server.
+  ///
+  /// This method provides access to unsolicited messages sent by the server that are not
+  /// responses to client requests.
+  ///
+  /// # Multiplexing
+  ///
+  /// The returned stream multiplexes inbound messages from all active connections in the
+  /// connection pool. Each connection shares the same underlying channel sender, so messages
+  /// from any connection will appear in this single stream.
+  ///
+  /// # Important
+  ///
+  /// This method can only be called **once** per `Client` instance. Subsequent calls will panic.
+  /// This is because the method takes ownership of the internal receiver, ensuring there is only
+  /// one consumer of inbound messages.
+  ///
+  /// # Panics
+  ///
+  /// Panics if called more than once on the same `Client` instance.
+  pub async fn inbound_stream(&self) -> ReceiverStream<(Message, Option<PoolBuffer>)> {
+    let mut inner = self.0.lock().await;
+    let rx = inner.inbound_rx.take().expect("inbound_stream can only be called once");
+    ReceiverStream::new(rx)
+  }
 }
 
 pub struct ClientInner<S, HS, ST>
@@ -232,6 +261,9 @@ where
 
   /// Connection pool for managing connections to the modulator server.
   conn_pool: managed::Pool<ClientConnManager<S, HS, ST>>,
+
+  /// Receiver for inbound messages.
+  inbound_rx: Option<mpsc::Receiver<(Message, Option<PoolBuffer>)>>,
 
   /// Phantom data for the service type.
   _service_type: PhantomData<ST>,
@@ -271,14 +303,22 @@ where
     let arc_client_id = Arc::new(client_id.into());
     let arc_config = Arc::new(config);
 
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
+
     let conn_pool =
-      managed::Pool::builder(ClientConnManager::new(arc_client_id, arc_config.clone(), dialer, handshaker))
+      managed::Pool::builder(ClientConnManager::new(arc_client_id, arc_config.clone(), dialer, handshaker, inbound_tx))
         .max_size(max_idle_connections)
         .create_timeout(Some(connect_timeout))
         .runtime(Runtime::Tokio1)
         .build()?;
 
-    Ok(Self { config: arc_config.clone(), next_id: AtomicU16::new(1), conn_pool, _service_type: PhantomData })
+    Ok(Self {
+      config: arc_config.clone(),
+      next_id: AtomicU16::new(1),
+      inbound_rx: Some(inbound_rx),
+      conn_pool,
+      _service_type: PhantomData,
+    })
   }
 
   async fn get_connection(&self) -> anyhow::Result<Object<ClientConnManager<S, HS, ST>>> {
@@ -341,6 +381,9 @@ where
   /// The handshaker used to perform the handshake with the server.
   handshaker: HS,
 
+  /// The inbound message sender.
+  inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
+
   /// Phantom data for the service type.
   _service_type: std::marker::PhantomData<ST>,
 }
@@ -351,13 +394,20 @@ where
   HS: Handshaker<S>,
   ST: Service,
 {
-  pub fn new(client_id: Arc<String>, config: Arc<Config>, dialer: Arc<dyn Dialer<Stream = S>>, handshaker: HS) -> Self {
+  pub fn new(
+    client_id: Arc<String>,
+    config: Arc<Config>,
+    dialer: Arc<dyn Dialer<Stream = S>>,
+    handshaker: HS,
+    inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
+  ) -> Self {
     Self {
       client_id,
       config,
       next_conn_id: atomic::AtomicU16::new(1),
       dialer,
       handshaker,
+      inbound_tx,
       _service_type: std::marker::PhantomData,
     }
   }
@@ -381,6 +431,7 @@ where
       self.config.clone(),
       self.dialer.clone(),
       self.handshaker.clone(),
+      self.inbound_tx.clone(),
     );
 
     conn.connect().await?;
@@ -526,6 +577,9 @@ where
   /// The handshaker used to perform the handshake with the server.
   handshaker: HS,
 
+  /// The inbound message sender.
+  inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
+
   /// The session information after the handshake is completed.
   session_info: Option<(SessionInfo, HS::SessionExtraInfo)>,
 
@@ -565,6 +619,7 @@ where
     config: Arc<Config>,
     dialer: Arc<dyn Dialer<Stream = S>>,
     handshaker: HS,
+    inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
   ) -> Self {
     let task_tracker = TaskTracker::new();
     let shutdown_token = CancellationToken::new();
@@ -575,6 +630,7 @@ where
       config,
       dialer,
       handshaker,
+      inbound_tx,
       session_info: None,
       inflight_requests_sem: None,
       pending_requests: PendingRequests::new(),
@@ -638,8 +694,9 @@ where
       payload_pool,
       self.pending_requests.clone(),
       self.error_state.clone(),
-      writer_tx,
-      shutdown_token,
+      writer_tx.clone(),
+      self.inbound_tx.clone(),
+      shutdown_token.clone(),
       self.config.payload_read_timeout,
     ));
 
@@ -795,6 +852,7 @@ where
     pending_requests: PendingRequests,
     error_state: ErrorState,
     writer_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
+    inbound_tx: mpsc::Sender<(Message, Option<PoolBuffer>)>,
     shutdown_token: CancellationToken,
     payload_read_timeout: Duration,
   ) where
@@ -815,6 +873,12 @@ where
               // Deserialize the server message and handle it.
               match deserialize(Cursor::new(line_bytes)) {
                 Ok(msg) => {
+                    // Read optional payload.
+                    let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.clone(), payload_read_timeout).await {
+                        Ok(payload_opt) => Ok((msg.clone(), payload_opt)),
+                        Err(e) => Err(anyhow!(e)),
+                    };
+
                     if let Some(correlation_id) = msg.correlation_id() {
                         match msg {
                             Message::Ping(_) => {
@@ -826,12 +890,6 @@ where
                                 continue;
                             },
                             _ => {
-                                // Read optional payload.
-                                let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.clone(), payload_read_timeout).await {
-                                    Ok(payload_opt) => Ok((msg, payload_opt)),
-                                    Err(e) => Err(anyhow!(e)),
-                                };
-
                                 // If the response correlates with a pending request, send the result to the corresponding sender.
                                 if let Some(sender) = pending_requests.take_response_sender(correlation_id) {
                                     if let Err(e) = sender.send(res) {
@@ -840,6 +898,17 @@ where
                                 } else {
                                     warn!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "unexpected response");
                                 }
+                            }
+                        }
+                    } else {
+                        match res {
+                            Ok((msg, payload_opt)) => {
+                                if let Err(e) = inbound_tx.try_send((msg, payload_opt)) {
+                                    warn!(client_id = client_id.as_str(), connection_id = conn_id, service_type = ST::NAME, error = ?e, "dropped inbound message: channel full or closed");
+                                }
+                            },
+                            Err(e) => {
+                                warn!(client_id = client_id.as_str(), connection_id = conn_id, service_type = ST::NAME, error = ?e, "failed to read inbound message payload");
                             }
                         }
                     }

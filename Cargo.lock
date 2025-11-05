@@ -1560,6 +1560,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -2130,6 +2131,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "futures",
  "humantime-serde",
  "serde",
  "serde_derive",
@@ -2149,9 +2151,11 @@ dependencies = [
  "anyhow",
  "async-trait",
  "deadpool",
+ "futures",
  "parking_lot",
  "rand",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "tracing",
  "zyn-protocol",
