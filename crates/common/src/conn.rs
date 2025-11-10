@@ -793,22 +793,7 @@ impl<D: Dispatcher> ConnInner<D> {
             Ok(true) => {
               let line_bytes = stream_reader.get_line().unwrap();
 
-              // Check if the rate limit is exceeded.
-              if rate_limit > 0 {
-                let now = tokio::time::Instant::now();
-                let elapsed = now.duration_since(rate_limit_last_check);
-                if elapsed.as_secs() > 1 {
-                    rate_limit_counter = 0;
-                    rate_limit_last_check = now;
-                }
-
-                rate_limit_counter += line_bytes.len() as u32;
-                if rate_limit_counter > rate_limit {
-                  let err_message = Message::Error(ErrorParameters{id: None, reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
-                  let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
-                  break 'connection_loop;
-                }
-              }
+              let message_length = line_bytes.len() as u32;
 
               // Deserialize the message and handle it.
               match deserialize(Cursor::new(line_bytes)) {
@@ -820,12 +805,15 @@ impl<D: Dispatcher> ConnInner<D> {
 
                   // Check if the message has an associated payload, and if so,
                   // read it from the connection.
+                  let mut payload_length: u32 = 0;
+
                   if let Some(payload_info) = msg.payload_info() {
                     if payload_info.length > max_payload_size {
                       let err_message = Message::Error(ErrorParameters{id: payload_info.id, reason: PolicyViolation.into(), detail: Some("payload too large".into())});
                       let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
                       break 'connection_loop;
                     }
+                    payload_length = payload_info.length as u32;
 
                     let mut pool_buff = {
                         match payload_buffer_pool.acquire(payload_info.length) {
@@ -865,6 +853,24 @@ impl<D: Dispatcher> ConnInner<D> {
                         let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
                         break 'connection_loop;
                       },
+                    }
+                  }
+
+                  // Check if the rate limit is exceeded.
+                  if rate_limit > 0 {
+                    let now = tokio::time::Instant::now();
+                    let elapsed = now.duration_since(rate_limit_last_check);
+                    if elapsed.as_secs() > 1 {
+                        rate_limit_counter = 0;
+                        rate_limit_last_check = now;
+                    }
+
+                    rate_limit_counter += message_length + payload_length;
+
+                    if rate_limit_counter > rate_limit {
+                      let err_message = Message::Error(ErrorParameters{id: msg.correlation_id(), reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
+                      let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                      break 'connection_loop;
                     }
                   }
 
