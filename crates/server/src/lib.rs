@@ -19,6 +19,7 @@ use crate::notifier::Notifier;
 use crate::router::GlobalRouter;
 use crate::version::{GIT_BRANCH_NAME, GIT_COMMIT_HASH, VERSION};
 
+use rlimit::Resource;
 use serde_derive::{Deserialize, Serialize};
 use tokio::signal;
 use tokio::task::JoinHandle;
@@ -66,6 +67,11 @@ pub async fn run(config_file: Option<String>, worker_threads: usize) -> anyhow::
     commit = GIT_COMMIT_HASH,
     "🚀 zyn server is starting..."
   );
+
+  // Set file descriptor limit based on configuration.
+  let max_connections = cfg.c2s_server.limits.max_connections;
+
+  set_file_descriptor_limit(max_connections)?;
 
   // Initialize the modulator.
   let mut modulator_service = zyn_modulator::init_modulator(
@@ -193,4 +199,21 @@ async fn wait_for_stop_signal() -> anyhow::Result<()> {
       Ok(())
     },
   }
+}
+
+fn set_file_descriptor_limit(max_connections: u32) -> anyhow::Result<()> {
+  // Calculate desired fd limit: max_connections + cluster_overhead (25% of max) + 32 (internal usage)
+  let cluster_overhead = max_connections / 4; // 25% overhead for cluster operations
+  let desired_fd_limit = max_connections + cluster_overhead + 32;
+
+  let (_soft, hard) = rlimit::getrlimit(Resource::NOFILE)?;
+
+  let new_limit = std::cmp::min(desired_fd_limit as u64, hard);
+
+  rlimit::setrlimit(Resource::NOFILE, new_limit, hard)
+    .map_err(|err| anyhow::anyhow!("failed to set file descriptor limit: {}", err))?;
+
+  info!(new_limit, "set file descriptor limit");
+
+  Ok(())
 }

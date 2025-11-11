@@ -1252,6 +1252,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rlimit"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7043b63bd0cd1aaa628e476b80e6d4023a3b50eb32789f2728908107bd0c793a"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2213,6 +2222,7 @@ dependencies = [
  "console-subscriber",
  "parking_lot",
  "rcgen",
+ "rlimit",
  "rustls",
  "rustls-pemfile",
  "rustls-pki-types",

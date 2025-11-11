@@ -30,6 +30,7 @@ zyn-common = { path = "../common" }
 zyn-modulator = { path = "../modulator" }
 zyn-protocol = { path = "../protocol" }
 zyn-util = { path = "../util" }
+rlimit = "0.10.2"
 
 [dev-dependencies]
 pki-types = { package = "rustls-pki-types", version = "1" }
