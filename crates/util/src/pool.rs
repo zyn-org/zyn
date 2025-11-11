@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use parking_lot::Mutex as PlMutex;
+use parking_lot::{Condvar as PlCondvar, Mutex as PlMutex};
 
 /// Internal state of the buffer pool
 #[derive(Debug)]
@@ -25,7 +25,13 @@ struct PoolState {
 /// A generic buffer pool that allows sharing buffers across threads.
 #[derive(Clone)]
 pub struct Pool {
-  state: Arc<PlMutex<PoolState>>,
+  inner: Arc<PoolInner>,
+}
+
+/// The inner state of a pool.
+struct PoolInner {
+  state: PlMutex<PoolState>,
+  cvar: PlCondvar,
 }
 
 // ==== impl Pool =====
@@ -41,30 +47,37 @@ impl Pool {
     assert!(buffer_size * count <= buffer.len(), "buffer size is too small");
 
     let mut available = VecDeque::with_capacity(count);
-
     for _ in 0..count {
-      // Split individual chunks from the pre-allocated buffer
-      let chunk = buffer.split_to(buffer_size);
-
-      available.push_back(chunk);
+      available.push_back(buffer.split_to(buffer_size));
     }
 
     let state = PoolState { available, in_use_count: 0, buffer_size };
+    let inner = Arc::new(PoolInner { state: PlMutex::new(state), cvar: PlCondvar::new() });
 
-    Pool { state: Arc::new(PlMutex::new(state)) }
+    Pool { inner }
   }
 
   /// Get a mutable buffer from the pool.
   /// Returns None if no buffers are available in the pool.
   pub fn acquire(&self) -> Option<MutablePoolBuffer> {
-    let mut state = self.state.lock();
-
+    let mut state = self.inner.state.lock();
     if let Some(buffer) = state.available.pop_back() {
       state.in_use_count += 1;
-
-      return Some(MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.state.clone()) }));
+      return Some(MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.inner.clone()) }));
     }
     None
+  }
+
+  /// Get a buffer from the pool, blocking the current thread until one becomes available.
+  pub fn acquire_blocking(&self) -> MutablePoolBuffer {
+    let mut state = self.inner.state.lock();
+    loop {
+      if let Some(buffer) = state.available.pop_back() {
+        state.in_use_count += 1;
+        return MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.inner.clone()) });
+      }
+      self.inner.cvar.wait(&mut state);
+    }
   }
 
   /// Get a mutable buffer from the pool, panicking if none is available.
@@ -78,20 +91,17 @@ impl Pool {
 
   /// Get the number of buffers currently in use.
   pub fn in_use_count(&self) -> usize {
-    let state = self.state.lock();
-    state.in_use_count
+    self.inner.state.lock().in_use_count
   }
 
   /// Get the number of available buffers.
   pub fn available_count(&self) -> usize {
-    let state = self.state.lock();
-    state.available.len()
+    self.inner.state.lock().available.len()
   }
 
   /// Get the size of the buffers in the pool.
   pub fn buffer_size(&self) -> usize {
-    let state = self.state.lock();
-    state.buffer_size
+    self.inner.state.lock().buffer_size
   }
 }
 
@@ -287,7 +297,7 @@ struct PoolBufferInner {
   data: Option<BytesMut>,
 
   /// Reference to the pool for returning the buffer.
-  pool: Option<Arc<PlMutex<PoolState>>>,
+  pool: Option<Arc<PoolInner>>,
 }
 
 impl Debug for PoolBufferInner {
@@ -323,12 +333,13 @@ impl PoolBufferInner {
 
 impl Drop for PoolBufferInner {
   fn drop(&mut self) {
-    if let Some(buffer) = self.data.take()
-      && let Some(pool) = self.pool.take()
-    {
-      let mut state = pool.lock();
+    if let (Some(buffer), Some(pool)) = (self.data.take(), self.pool.take()) {
+      let mut state = pool.state.lock();
       state.available.push_back(buffer);
       state.in_use_count -= 1;
+
+      // Wake one blocked waiter (if any)
+      pool.cvar.notify_one();
     }
   }
 }
@@ -537,6 +548,66 @@ mod pool_tests {
     // All buffers should be returned
     assert_eq!(pool.in_use_count(), 0);
     assert_eq!(pool.available_count(), 10);
+  }
+
+  #[test]
+  fn test_acquire_blocking() {
+    use std::sync::{Arc, Barrier};
+    use std::time::Instant;
+
+    // Create a pool with just 1 buffer
+    let pool = Pool::new(1, 1024);
+
+    // Acquire the only buffer, making the pool empty
+    let buffer = pool.acquire().unwrap();
+    assert_eq!(pool.in_use_count(), 1);
+    assert_eq!(pool.available_count(), 0);
+
+    // Use a barrier to ensure the thread has started and is ready to block
+    let barrier = Arc::new(Barrier::new(2));
+    let thread_barrier = barrier.clone();
+
+    // Spawn a thread that will try to acquire a buffer and should block
+    let pool_clone = pool.clone();
+    let handle = std::thread::spawn(move || {
+      // Signal the main thread that we're about to block
+      thread_barrier.wait();
+
+      // This call should block until a buffer becomes available
+      let start = Instant::now();
+      let blocking_buffer = pool_clone.acquire_blocking();
+      let elapsed = start.elapsed();
+      // Verify that some time elapsed (thread was blocked)
+      assert!(elapsed.as_nanos() > 0, "Thread wasn't blocked at all");
+
+      // Validate that we got a proper buffer
+      assert_eq!(blocking_buffer.len(), 1024);
+
+      // Return the blocking buffer and elapsed time
+      blocking_buffer
+    });
+
+    // Wait for the spawned thread to reach the barrier
+    barrier.wait();
+
+    // At this point, we know the thread is about to call acquire_blocking
+    // Wait a tiny bit to ensure it's blocked
+    std::thread::yield_now();
+
+    // Verify the pool state hasn't changed before returning the buffer
+    assert_eq!(pool.in_use_count(), 1);
+    assert_eq!(pool.available_count(), 0);
+
+    // Return the buffer to the pool, which should unblock the waiting thread
+    drop(buffer);
+
+    // Wait for the thread to complete
+    let thread_buffer = handle.join().unwrap();
+
+    assert_eq!(thread_buffer.len(), 1024);
+
+    assert_eq!(pool.in_use_count(), 1); // The thread's buffer is still in use
+    assert_eq!(pool.available_count(), 0);
   }
 }
 
