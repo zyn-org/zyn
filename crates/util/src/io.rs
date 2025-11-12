@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: AGPL-3.0
+
+use std::io::IoSlice;
+
+use anyhow;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+/// Writes all the provided buffers to an asynchronous writer using vectored I/O.
+///
+/// This function efficiently writes multiple buffers (gathered in the `bufs` slice) to
+/// the provided writer using vectored I/O operations. It continues writing until all
+/// buffers are completely written or an error occurs.
+///
+/// # Parameters
+///
+/// * `writer` - A mutable reference to the writer implementing AsyncWrite and AsyncWriteExt
+/// * `bufs` - A mutable slice of IoSlice references containing the data to write
+///
+/// # Returns
+///
+/// * `Ok(())` - When all buffers have been successfully written
+/// * `Err(_)` - When a write operation fails or returns zero bytes written
+///
+/// # Errors
+///
+/// This function returns an error if:
+/// - Any write operation returns an underlying I/O error
+/// - A write operation returns 0 bytes written (indicating a closed connection)
+pub async fn write_all_vectored<W>(writer: &mut W, bufs: &mut [IoSlice<'_>]) -> anyhow::Result<()>
+where
+  W: AsyncWrite + AsyncWriteExt + Unpin,
+{
+  let mut bufs_remaining = bufs;
+
+  while !bufs_remaining.is_empty() {
+    let n = writer.write_vectored(bufs_remaining).await?;
+    if n == 0 {
+      return Err(anyhow::anyhow!("failed to write to stream"));
+    }
+
+    IoSlice::advance_slices(&mut bufs_remaining, n);
+  }
+
+  Ok(())
+}
