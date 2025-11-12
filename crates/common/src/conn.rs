@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 
 use core::fmt::Debug;
-use std::io::Cursor;
+use std::io::{Cursor, IoSlice};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -12,18 +12,21 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use parking_lot::Mutex as PlMutex;
 use rand::random;
+use smallvec::SmallVec;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
+
 use zyn_protocol::ErrorReason::{
   BadRequest, InternalServerError, MessageChannelIsFull, PolicyViolation, ServerOverloaded, ServerShuttingDown, Timeout,
 };
 use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
 
 use zyn_util::codec::{StreamReader, StreamReaderError};
+use zyn_util::io::write_all_vectored;
 use zyn_util::pool::{BucketedPool, MutablePoolBuffer, Pool, PoolBuffer};
 use zyn_util::slab::{Slab, SlabRef};
 use zyn_util::string_atom::StringAtom;
@@ -960,22 +963,26 @@ impl<D: Dispatcher> ConnInner<D> {
     Ok(())
   }
 
-  async fn write_message<T>(
+  async fn write_message<W>(
     message: &Message,
     payload_opt: Option<PoolBuffer>,
-    writer: &mut T,
+    writer: &mut W,
     write_buffer: &mut [u8],
   ) -> anyhow::Result<()>
   where
-    T: AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
   {
-    let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
-    writer.write_all(&write_buffer[..n]).await?;
+    let mut iovs: SmallVec<[IoSlice<'_>; 3]> = SmallVec::new();
 
-    if let Some(payload) = payload_opt {
-      writer.write_all(payload.as_slice()).await?;
-      let _ = writer.write(b"\n").await?;
+    let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
+    iovs.push(IoSlice::new(&write_buffer[..n]));
+
+    if let Some(payload) = payload_opt.as_ref() {
+      iovs.push(IoSlice::new(payload.as_slice()));
+      iovs.push(IoSlice::new(b"\n"));
     }
+
+    write_all_vectored(writer, &mut iovs).await?;
 
     writer.flush().await?;
 
