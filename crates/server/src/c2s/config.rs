@@ -162,10 +162,10 @@ pub struct Limits {
   #[serde(default = "default_max_inflight_requests")]
   pub max_inflight_requests: u32,
 
-  /// The maximum number of messages that can be enqueued
+  /// The maximum number of outgoing messages that can be enqueued
   /// before disconnecting the client.
-  #[serde(default = "default_send_message_channel_size")]
-  pub send_message_channel_size: u32,
+  #[serde(default = "default_outbound_message_queue_size")]
+  pub outbound_message_queue_size: u32,
 
   /// The maximum number of bytes that can be sent per second.
   #[serde(default = "default_rate_limit")]
@@ -200,8 +200,8 @@ fn default_max_channels_per_client() -> u32 {
   100
 }
 
-fn default_send_message_channel_size() -> u32 {
-  1_024
+fn default_outbound_message_queue_size() -> u32 {
+  2048
 }
 
 fn default_rate_limit() -> u32 {
@@ -222,7 +222,7 @@ impl Default for Limits {
       max_message_size: default_max_message_size(),
       max_payload_size: default_max_payload_size(),
       max_inflight_requests: default_max_inflight_requests(),
-      send_message_channel_size: default_send_message_channel_size(),
+      outbound_message_queue_size: default_outbound_message_queue_size(),
       rate_limit: default_rate_limit(),
       payload_pool_memory_budget: default_payload_pool_memory_budget(),
     }
@@ -238,7 +238,7 @@ impl From<&Config> for zyn_common::conn::Config {
       connect_timeout: config.connect_timeout,
       authenticate_timeout: config.authenticate_timeout,
       payload_read_timeout: config.payload_read_timeout,
-      send_message_channel_size: config.limits.send_message_channel_size,
+      outbound_message_queue_size: config.limits.outbound_message_queue_size,
       request_timeout: config.request_timeout,
       max_inflight_requests: config.limits.max_inflight_requests,
       rate_limit: config.limits.rate_limit,
