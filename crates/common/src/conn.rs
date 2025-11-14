@@ -12,7 +12,6 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use parking_lot::Mutex as PlMutex;
 use rand::random;
-use smallvec::SmallVec;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf};
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
@@ -972,17 +971,21 @@ impl<D: Dispatcher> ConnInner<D> {
   where
     W: AsyncWrite + Unpin,
   {
-    let mut iovs: SmallVec<[IoSlice<'_>; 3]> = SmallVec::new();
+    let mut iovs = [IoSlice::new(&[]); 3];
+
+    let mut iovs_count = 0;
 
     let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
-    iovs.push(IoSlice::new(&write_buffer[..n]));
+    iovs[0] = IoSlice::new(&write_buffer[..n]);
+    iovs_count += 1;
 
     if let Some(payload) = payload_opt.as_ref() {
-      iovs.push(IoSlice::new(payload.as_slice()));
-      iovs.push(IoSlice::new(b"\n"));
+      iovs[1] = IoSlice::new(payload.as_slice());
+      iovs[2] = IoSlice::new(b"\n");
+      iovs_count += 2;
     }
 
-    write_all_vectored(writer, &mut iovs).await?;
+    write_all_vectored(writer, &mut iovs[..iovs_count]).await?;
 
     writer.flush().await?;
 
