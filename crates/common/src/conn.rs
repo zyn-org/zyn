@@ -26,7 +26,7 @@ use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serial
 
 use zyn_util::codec::{StreamReader, StreamReaderError};
 use zyn_util::io::write_all_vectored;
-use zyn_util::pool::{BucketedPool, MutablePoolBuffer, Pool, PoolBuffer};
+use zyn_util::pool::{BucketedPool, Pool, PoolBuffer};
 use zyn_util::slab::{Slab, SlabRef};
 use zyn_util::string_atom::StringAtom;
 
@@ -234,6 +234,10 @@ pub struct Config {
   /// The connection maximum number of inflight requests.
   pub max_inflight_requests: u32,
 
+  /// The maximum number of messages that will be batched
+  /// after serialization before flushing to the client.
+  pub flush_batch_size: u32,
+
   /// The maximum number of bytes that can be read per second.
   pub rate_limit: u32,
 }
@@ -284,12 +288,14 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     let conn_cfg = config.into();
 
     let max_connections = conn_cfg.max_connections as usize;
+    let flush_batch_size = conn_cfg.flush_batch_size as usize;
 
     let connections = Slab::with_capacity(max_connections);
 
-    // Create a message buffer pool with a size of max_connections * 2,
-    // one for reading and one for writing.
-    let message_buffer_pool = Pool::new(max_connections * 2, conn_cfg.max_message_size as usize);
+    // Create a message buffer pool with a size of max_connections + (max_connections * flush_batch_size),
+    // accounting for reading and multiple buffered writes per connection.
+    let message_buffer_pool =
+      Pool::new(max_connections + (max_connections * flush_batch_size), conn_cfg.max_message_size as usize);
 
     // Use the configured memory budget for the payload buffer pool
     let memory_budget_bytes = conn_cfg.payload_pool_memory_budget as usize;
@@ -385,9 +391,6 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     }
     let conn_ref = conn_ref_opt.unwrap();
 
-    let read_pool_buffer = message_buffer_pool.must_acquire();
-    let write_pool_buffer = message_buffer_pool.must_acquire();
-
     let send_msg_channel_size = config.send_message_channel_size as usize;
 
     let (send_msg_tx, send_msg_rx) = channel(send_msg_channel_size);
@@ -427,6 +430,8 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
 
     let max_payload_size = config.max_payload_size as usize;
 
+    let flush_batch_size = config.flush_batch_size as usize;
+
     let rate_limit = config.rate_limit;
 
     match ConnInner::<D>::run_loop::<T, ST>(
@@ -435,11 +440,11 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
       send_msg_rx,
       close_rx,
       shutdown_token,
-      read_pool_buffer,
-      write_pool_buffer,
+      message_buffer_pool,
       payload_buffer_pool,
       payload_read_timeout,
       max_payload_size,
+      flush_batch_size,
       rate_limit,
     )
     .await
@@ -762,11 +767,11 @@ impl<D: Dispatcher> ConnInner<D> {
     mut send_msg_rx: Receiver<(Message, Option<PoolBuffer>)>,
     mut close_rx: Receiver<Message>,
     shutdown_token: CancellationToken,
-    read_pool_buffer: MutablePoolBuffer,
-    mut write_pool_buffer: MutablePoolBuffer,
+    message_buffer_pool: Pool,
     payload_buffer_pool: BucketedPool,
     payload_read_timeout: Duration,
     max_payload_size: usize,
+    flush_batch_size: usize,
     rate_limit: u32,
   ) -> anyhow::Result<()>
   where
@@ -778,12 +783,15 @@ impl<D: Dispatcher> ConnInner<D> {
     // Split the stream into read and write halves.
     let (reader, mut writer) = tokio::io::split(stream);
 
-    let mut stream_reader = StreamReader::with_pool_buffer(reader, read_pool_buffer);
+    let read_pool_buffer = message_buffer_pool.must_acquire();
 
-    let write_buffer = write_pool_buffer.as_mut_slice();
+    let mut stream_reader = StreamReader::with_pool_buffer(reader, read_pool_buffer);
 
     let mut rate_limit_counter = 0;
     let mut rate_limit_last_check = tokio::time::Instant::now();
+
+    let mut flush_batch: Vec<(PoolBuffer, Option<PoolBuffer>)> = Vec::with_capacity(flush_batch_size);
+    let mut iovs = vec![IoSlice::new(&[]); flush_batch_size * 3].into_boxed_slice();
 
     'connection_loop: loop {
       tokio::select! {
@@ -812,7 +820,7 @@ impl<D: Dispatcher> ConnInner<D> {
                   if let Some(payload_info) = msg.payload_info() {
                     if payload_info.length > max_payload_size {
                       let err_message = Message::Error(ErrorParameters{id: payload_info.id, reason: PolicyViolation.into(), detail: Some("payload too large".into())});
-                      let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                      let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                       break 'connection_loop;
                     }
                     payload_length = payload_info.length as u32;
@@ -821,7 +829,7 @@ impl<D: Dispatcher> ConnInner<D> {
                         match payload_buffer_pool.acquire(payload_info.length) {
                             Some(buffer) => buffer,
                             None => {
-                                let _ = Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, &mut writer, write_buffer).await;
+                                let _ = Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, &mut writer, message_buffer_pool.clone()).await;
                                 continue 'connection_loop;
                             }
                         }
@@ -845,14 +853,14 @@ impl<D: Dispatcher> ConnInner<D> {
                                 }
                             };
 
-                            let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                            let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                             break 'connection_loop;
                           },
                         }
                       },
                       Err(_) => {
                         let err_message = Message::Error(ErrorParameters{id: None, reason: Timeout.into(), detail: Some("payload read timeout".into())});
-                        let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                        let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                         break 'connection_loop;
                       },
                     }
@@ -871,7 +879,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
                     if rate_limit_counter > rate_limit {
                       let err_message = Message::Error(ErrorParameters{id: msg.correlation_id(), reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
-                      let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                      let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                       break 'connection_loop;
                     }
                   }
@@ -888,7 +896,7 @@ impl<D: Dispatcher> ConnInner<D> {
                 Err(e) => {
                   let err_detail = format!("{}", e);
                   let err_message = Message::Error(ErrorParameters{id: None, reason: BadRequest.into(), detail: Some(StringAtom::from(err_detail))});
-                  let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                  let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                   break 'connection_loop;
                 },
               }
@@ -902,7 +910,7 @@ impl<D: Dispatcher> ConnInner<D> {
               match e {
                 StreamReaderError::MaxLineLengthExceeded => {
                   let err_message = Message::Error(ErrorParameters{ id: None, reason: PolicyViolation.into(), detail: Some("max message size exceeded".into()) });
-                  let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+                  let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
                   break 'connection_loop;
                 },
                 StreamReaderError::IoError(e) => {
@@ -918,20 +926,48 @@ impl<D: Dispatcher> ConnInner<D> {
 
         // Write the message to the stream.
         res = send_msg_rx.recv() => {
-          let (msg, payload_opt) = res.unwrap();
-          match Self::write_message(&msg, payload_opt, &mut writer, write_buffer).await {
-            Ok(_) => {},
-            Err(e) => {
-              error!(handler = handler, service_type = ST::NAME, "{}", e.to_string());
+          const MESSAGE_CHANNEL_CLOSED_LOG: &str = "message channel closed";
+
+          match res {
+            Some((message, payload_opt)) => {
+                let message_buff = Self::serialize_message(&message, message_buffer_pool.clone())?;
+                flush_batch.push((message_buff, payload_opt));
+            }
+            None => {
+              error!(handler = handler, service_type = ST::NAME, MESSAGE_CHANNEL_CLOSED_LOG);
               break 'connection_loop;
-            },
+            }
+          };
+
+          loop {
+            if flush_batch.len() == flush_batch.capacity() {
+                break;
+            }
+
+            match send_msg_rx.try_recv() {
+              Ok((message, payload_opt)) => {
+                  let message_buff = Self::serialize_message(&message, message_buffer_pool.clone())?;
+                  flush_batch.push((message_buff, payload_opt));
+              },
+              Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
+              Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                error!(handler = handler, service_type = ST::NAME, MESSAGE_CHANNEL_CLOSED_LOG);
+                break 'connection_loop;
+              }
+            }
           }
+
+          let iovs_count = Self::prepare_iovs(flush_batch.as_ptr(), flush_batch.len(), iovs.as_mut_ptr());
+
+          Self::write_iovs(&mut iovs[..iovs_count], &mut writer).await?;
+
+          flush_batch.clear();
         },
 
         // Close the connection.
         res = close_rx.recv() => {
           let err_message = res.unwrap();
-          let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+          let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
           info!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -939,7 +975,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection on shutdown.
         _ = shutdown_token.cancelled() => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
-          let _ = Self::write_message(&err_message, None, &mut writer, write_buffer).await;
+          let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
           info!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -966,30 +1002,69 @@ impl<D: Dispatcher> ConnInner<D> {
     message: &Message,
     payload_opt: Option<PoolBuffer>,
     writer: &mut W,
-    write_buffer: &mut [u8],
+    message_buffer_pool: Pool,
   ) -> anyhow::Result<()>
   where
     W: AsyncWrite + Unpin,
   {
-    let mut iovs = [IoSlice::new(&[]); 3];
+    let message_buff = Self::serialize_message(message, message_buffer_pool)?;
 
+    let batch = [(message_buff, payload_opt)];
+
+    let mut iovs = [IoSlice::new(&[]); 3];
+    let iovs_count = Self::prepare_iovs(batch.as_ptr(), 1, iovs.as_mut_ptr());
+
+    Self::write_iovs(&mut iovs[..iovs_count], writer).await?;
+
+    Ok(())
+  }
+
+  fn prepare_iovs<'a>(
+    batch_ptr: *const (PoolBuffer, Option<PoolBuffer>),
+    batch_len: usize,
+    iovs: *mut IoSlice<'a>,
+  ) -> usize {
     let mut iovs_count = 0;
 
-    let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
-    iovs[0] = IoSlice::new(&write_buffer[..n]);
-    iovs_count += 1;
+    unsafe {
+      for i in 0..batch_len {
+        let batch_item = &*batch_ptr.add(i);
 
-    if let Some(payload) = payload_opt.as_ref() {
-      iovs[1] = IoSlice::new(payload.as_slice());
-      iovs[2] = IoSlice::new(b"\n");
-      iovs_count += 2;
+        let message_buff = &batch_item.0;
+        let payload_opt = &batch_item.1;
+
+        *iovs.add(iovs_count) = IoSlice::new(message_buff.as_slice());
+        iovs_count += 1;
+
+        if let Some(payload) = payload_opt {
+          *iovs.add(iovs_count) = IoSlice::new(payload.as_slice());
+          iovs_count += 1;
+          *iovs.add(iovs_count) = IoSlice::new(b"\n");
+          iovs_count += 1;
+        }
+      }
     }
 
-    write_all_vectored(writer, &mut iovs[..iovs_count]).await?;
+    iovs_count
+  }
 
+  async fn write_iovs<W>(iovs: &mut [IoSlice<'_>], writer: &mut W) -> anyhow::Result<()>
+  where
+    W: AsyncWrite + Unpin,
+  {
+    write_all_vectored(iovs, writer).await?;
     writer.flush().await?;
 
     Ok(())
+  }
+
+  fn serialize_message(message: &Message, message_buffer_pool: Pool) -> anyhow::Result<PoolBuffer> {
+    let mut mut_write_buffer = message_buffer_pool.must_acquire();
+    let write_buffer = mut_write_buffer.as_mut_slice();
+
+    let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
+
+    Ok(mut_write_buffer.freeze(n))
   }
 
   async fn read_payload<T>(

@@ -13,8 +13,8 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 ///
 /// # Parameters
 ///
-/// * `writer` - A mutable reference to the writer implementing AsyncWrite and AsyncWriteExt
 /// * `bufs` - A mutable slice of IoSlice references containing the data to write
+/// * `writer` - A mutable reference to the writer implementing AsyncWrite and AsyncWriteExt
 ///
 /// # Returns
 ///
@@ -26,7 +26,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// This function returns an error if:
 /// - Any write operation returns an underlying I/O error
 /// - A write operation returns 0 bytes written (indicating a closed connection)
-pub async fn write_all_vectored<W>(writer: &mut W, bufs: &mut [IoSlice<'_>]) -> anyhow::Result<()>
+pub async fn write_all_vectored<W>(bufs: &mut [IoSlice<'_>], writer: &mut W) -> anyhow::Result<()>
 where
   W: AsyncWrite + AsyncWriteExt + Unpin,
 {
