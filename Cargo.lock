@@ -2130,6 +2130,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "webpki-roots",
+ "zyn-client",
  "zyn-protocol",
  "zyn-util",
 ]
@@ -2146,6 +2147,7 @@ dependencies = [
  "serde_derive",
  "tokio",
  "tokio-rustls",
+ "tokio-stream",
  "tracing",
  "zyn-common",
  "zyn-protocol",

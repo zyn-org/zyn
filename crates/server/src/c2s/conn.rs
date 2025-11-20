@@ -30,7 +30,7 @@ use zyn_util::string_atom::StringAtom;
 pub type C2sConnManager = zyn_common::conn::ConnManager<C2sDispatcher, C2sDispatcherFactory, C2sService>;
 
 #[derive(Clone)]
-/// A transmitter implementation for C2S (client-to-server) connections.
+/// A transmitter implementation for C2S connections.
 ///
 /// This struct wraps a connection transmitter (`ConnTx`) along with the handler
 /// identifier to provide a `Transmitter` interface for C2S connections.

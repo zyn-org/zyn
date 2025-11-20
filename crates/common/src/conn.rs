@@ -20,7 +20,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
 use zyn_protocol::ErrorReason::{
-  BadRequest, InternalServerError, MessageChannelIsFull, PolicyViolation, ServerOverloaded, ServerShuttingDown, Timeout,
+  BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerOverloaded, ServerShuttingDown, Timeout,
 };
 use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
 
@@ -224,9 +224,9 @@ pub struct Config {
   /// The pool will allocate buffers of varying sizes up to this total.
   pub payload_pool_memory_budget: u32,
 
-  /// The maximum number of messages that can be enqueued
+  /// The maximum number of outbound messages that can be enqueued
   /// before disconnecting the client.
-  pub send_message_channel_size: u32,
+  pub outbound_message_queue_size: u32,
 
   /// The timeout for the request.
   pub request_timeout: Duration,
@@ -391,7 +391,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     }
     let conn_ref = conn_ref_opt.unwrap();
 
-    let send_msg_channel_size = config.send_message_channel_size as usize;
+    let send_msg_channel_size = config.outbound_message_queue_size as usize;
 
     let (send_msg_tx, send_msg_rx) = channel(send_msg_channel_size);
     let (close_tx, close_rx) = channel(1);
@@ -1151,7 +1151,7 @@ impl ConnTx {
       Err(_) => {
         // The send channel is full, so most likely the client is either not reading
         // or is too slow to process incoming messages. In this case, we close the connection.
-        self.close(Message::Error(ErrorParameters { id: None, reason: MessageChannelIsFull.into(), detail: None }));
+        self.close(Message::Error(ErrorParameters { id: None, reason: OutboundQueueIsFull.into(), detail: None }));
       },
     }
   }

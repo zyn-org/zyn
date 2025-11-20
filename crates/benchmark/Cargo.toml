@@ -27,5 +27,6 @@ rand = "0.9"
 futures = "0.3"
 
 # Internal dependencies
+zyn-client = { path = "../client" }
 zyn-protocol = { path = "../protocol" }
 zyn-util = { path = "../util" }

@@ -216,9 +216,6 @@ async fn handle_connection(
   acceptor: TlsAcceptor,
   conn_mng: C2sConnManager,
 ) -> anyhow::Result<()> {
-  // Set the TCP_NODELAY option to disable Nagle's algorithm.
-  tcp_stream.set_nodelay(true)?;
-
   // Negotiate the TLS connection.
   let tls_stream = acceptor.accept(tcp_stream).await?;
 

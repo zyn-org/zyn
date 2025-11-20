@@ -498,7 +498,9 @@ impl ChannelManager {
   ///
   /// A result indicating success or failure
   pub async fn leave_all_channels(&mut self, zid: Zid) -> anyhow::Result<()> {
-    let in_channels_opt = self.0.write().await.in_channels.remove(&zid.username);
+    let mut inner = self.0.write().await;
+    let in_channels_opt = inner.in_channels.remove(&zid.username);
+    drop(inner);
 
     if let Some(in_channels) = in_channels_opt {
       for channel_id in in_channels.iter() {
@@ -586,7 +588,7 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u16,
   ) -> anyhow::Result<()> {
-    let inner = self.0.write().await;
+    let inner = self.0.read().await;
 
     // Ensure the channel is local.
     if channel_id.domain != inner.router.c2s_router().local_domain() {
@@ -709,7 +711,7 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u16,
   ) -> anyhow::Result<()> {
-    let inner = self.0.write().await;
+    let inner = self.0.read().await;
 
     // Ensure the channel is local.
     if channel_id.domain != inner.router.c2s_router().local_domain() {
@@ -768,7 +770,7 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u16,
   ) -> anyhow::Result<()> {
-    let inner = self.0.write().await;
+    let inner = self.0.read().await;
 
     // Ensure the channel is local.
     if channel_id.domain != inner.router.c2s_router().local_domain() {
@@ -781,6 +783,7 @@ impl ChannelManager {
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+
     let channel_guard = channel_ref.read().await;
 
     if !channel_guard.is_member(&zid) {
@@ -814,7 +817,11 @@ impl ChannelManager {
 
     let targets = channel_guard.members.iter().filter(|m| acl.is_read_allowed(m));
 
-    inner.router.route_to_many(msg, Some(payload), targets, Some(transmitter.resource())).await?;
+    // Drop the manager guard before starting the broadcast.
+    let router = inner.router.clone();
+    drop(inner);
+
+    router.route_to_many(msg, Some(payload), targets, Some(transmitter.resource())).await?;
 
     // Send response back to the client.
     transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));

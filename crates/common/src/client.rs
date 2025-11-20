@@ -40,9 +40,9 @@ pub const TCP_NETWORK: &str = "tcp";
 /// Unix domain socket network type.
 pub const UNIX_NETWORK: &str = "unix";
 
-const WRITER_RECEIVER_CAPACITY: usize = 16 * 1024;
+const OUTBOUND_QUEUE_SIZE: usize = 4 * 1024;
 
-const INBOUND_MESSAGE_RECEIVER_CAPACITY: usize = 16 * 1024;
+const INBOUND_QUEUE_SIZE: usize = 16 * 1024;
 
 // Zyn client configuration.
 #[derive(Clone, Debug)]
@@ -337,7 +337,7 @@ where
     let arc_client_id = Arc::new(client_id.into());
     let arc_config = Arc::new(config);
 
-    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_QUEUE_SIZE);
 
     Ok(Self {
       client_id: arc_client_id,
@@ -366,7 +366,7 @@ where
     let arc_client_id = Arc::new(client_id.into());
     let arc_config = Arc::new(config);
 
-    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_MESSAGE_RECEIVER_CAPACITY);
+    let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(INBOUND_QUEUE_SIZE);
 
     let conn_pool = managed::Pool::builder(ClientConnManager::new(
       arc_client_id.clone(),
@@ -492,7 +492,16 @@ where
   }
 
   fn next_id(&self) -> u16 {
-    self.next_id.fetch_add(1, atomic::Ordering::SeqCst) + 1
+    self
+      .next_id
+      .fetch_update(atomic::Ordering::SeqCst, atomic::Ordering::SeqCst, |cur| {
+        let mut next = cur.wrapping_add(1);
+        if next == 0 {
+          next = 1;
+        }
+        Some(next)
+      })
+      .unwrap()
   }
 }
 
@@ -802,7 +811,11 @@ where
     // Create buffer pools for message serialization (reading and writing) and payload handling
     let message_pool = Pool::new(2 * self.config.max_idle_connections, session_info.max_message_size as usize);
 
-    let payload_pool = Pool::new(self.config.max_idle_connections, session_info.max_payload_size as usize);
+    // Calculate the maximum number of in-flight payload buffers.
+    // This includes space for outbound and inbound messages, as well as space for each idle connection (reader and writer tasks).
+    let payload_buffer_count = OUTBOUND_QUEUE_SIZE + INBOUND_QUEUE_SIZE + (2 * self.config.max_idle_connections);
+
+    let payload_pool = Pool::new(payload_buffer_count, session_info.max_payload_size as usize);
 
     // Spawn writer and reader tasks
     let task_tracker = self.task_tracker.clone();
@@ -810,7 +823,7 @@ where
 
     let (rh, wh) = tokio::io::split(stream);
 
-    let (writer_tx, writer_rx) = mpsc::channel::<(Message, Option<PoolBuffer>)>(WRITER_RECEIVER_CAPACITY);
+    let (writer_tx, writer_rx) = mpsc::channel::<(Message, Option<PoolBuffer>)>(OUTBOUND_QUEUE_SIZE);
     task_tracker.spawn(Self::writer_task(
       self.client_id.clone(),
       self.conn_id,
@@ -1028,8 +1041,8 @@ where
                             _ => {
                                 // If the response correlates with a pending request, send the result to the corresponding sender.
                                 if let Some(sender) = pending_requests.take_response_sender(correlation_id) {
-                                    if let Err(e) = sender.send(res) {
-                                        warn!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, error = ?e, "failed to send client response");
+                                    if sender.send(res).is_err() {
+                                        warn!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "failed to send client response: receiver dropped");
                                     }
                                 } else {
                                     warn!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "unexpected response");

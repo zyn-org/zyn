@@ -106,7 +106,7 @@ impl C2sSuite {
       connect_timeout: arc_config.connect_timeout,
       authenticate_timeout: arc_config.authenticate_timeout,
       payload_read_timeout: arc_config.payload_read_timeout,
-      send_message_channel_size: arc_config.limits.send_message_channel_size,
+      outbound_message_queue_size: arc_config.limits.outbound_message_queue_size,
       request_timeout: arc_config.request_timeout,
       max_inflight_requests: arc_config.limits.max_inflight_requests,
       flush_batch_size: arc_config.limits.flush_batch_size,

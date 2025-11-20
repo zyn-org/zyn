@@ -277,9 +277,9 @@ pub struct Limits {
   /// The maximum number of inflight requests per client.
   pub max_inflight_requests: u32,
 
-  /// The maximum number of messages that can be enqueued
+  /// The maximum number of outbound messages that can be enqueued
   /// before disconnecting the client.
-  pub send_message_channel_size: u32,
+  pub outgoing_message_queue_size: u32,
 
   /// The maximum number of messages that will be batched
   /// after serialization before flushing to the client.
@@ -299,7 +299,7 @@ impl Default for Limits {
       max_payload_size: 256 * 1024,                  // 256KB
       payload_pool_memory_budget: 256 * 1024 * 1024, // 256MB
       max_inflight_requests: 100,
-      send_message_channel_size: 512,
+      outgoing_message_queue_size: 2048,
       flush_batch_size: 64,
       rate_limit: 512 * 1024, // 512KB
     }
@@ -316,7 +316,7 @@ impl From<&ServerConfig> for zyn_common::conn::Config {
       connect_timeout: config.connect_timeout,
       authenticate_timeout: Default::default(),
       payload_read_timeout: config.payload_read_timeout,
-      send_message_channel_size: config.limits.send_message_channel_size,
+      outbound_message_queue_size: config.limits.outgoing_message_queue_size,
       request_timeout: config.request_timeout,
       max_inflight_requests: config.limits.max_inflight_requests,
       flush_batch_size: config.limits.flush_batch_size,
