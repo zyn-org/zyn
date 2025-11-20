@@ -160,10 +160,10 @@ If you're interested in using Zyn in production, we encourage you to get involve
 
 We're actively working on expanding Zyn's capabilities. Here are some features planned for future releases:
 
-- ** Federation Support**: Enable multiple Zyn servers to communicate and share messages across distributed deployments, allowing for horizontal scaling and multi-region architectures
-- ** Enhanced Observability**: Built-in metrics, tracing, and monitoring capabilities
-- ** Additional Protocol Transports**: Support for WebSocket and other transport layers
-- ** Performance Optimizations**: Continued improvements to throughput and latency
+- **Federation Support**: Enable multiple Zyn servers to communicate and share messages across distributed deployments, allowing for horizontal scaling and multi-region architectures
+- **Enhanced Observability**: Built-in metrics, tracing, and monitoring capabilities
+- **Additional Protocol Transports**: Support for WebSocket and other transport layers
+- **Performance Optimizations**: Continued improvements to throughput and latency
 
 ## Contributing
 
