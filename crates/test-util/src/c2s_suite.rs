@@ -109,6 +109,7 @@ impl C2sSuite {
       send_message_channel_size: arc_config.limits.send_message_channel_size,
       request_timeout: arc_config.request_timeout,
       max_inflight_requests: arc_config.limits.max_inflight_requests,
+      flush_batch_size: arc_config.limits.flush_batch_size,
       rate_limit: arc_config.limits.rate_limit,
     };
 

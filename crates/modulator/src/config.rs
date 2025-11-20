@@ -281,6 +281,10 @@ pub struct Limits {
   /// before disconnecting the client.
   pub send_message_channel_size: u32,
 
+  /// The maximum number of messages that will be batched
+  /// after serialization before flushing to the client.
+  pub flush_batch_size: u32,
+
   /// The maximum number of bytes that can be sent per second.
   pub rate_limit: u32,
 }
@@ -296,6 +300,7 @@ impl Default for Limits {
       payload_pool_memory_budget: 256 * 1024 * 1024, // 256MB
       max_inflight_requests: 100,
       send_message_channel_size: 512,
+      flush_batch_size: 64,
       rate_limit: 512 * 1024, // 512KB
     }
   }
@@ -314,6 +319,7 @@ impl From<&ServerConfig> for zyn_common::conn::Config {
       send_message_channel_size: config.limits.send_message_channel_size,
       request_timeout: config.request_timeout,
       max_inflight_requests: config.limits.max_inflight_requests,
+      flush_batch_size: config.limits.flush_batch_size,
       rate_limit: config.limits.rate_limit,
     }
   }
