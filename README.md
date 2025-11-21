@@ -4,7 +4,7 @@
 [![Releases](https://img.shields.io/github/v/release/zyn-org/zyn?include_prereleases)](https://github.com/zyn-org/zyn/releases)
 [![LICENSE](https://img.shields.io/github/license/zyn-org/zyn)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
-A messaging server built for real-time pub/sub communication.
+An extensible messaging server built for real-time pub/sub communication.
 
 ## Features
 
