@@ -4,7 +4,7 @@
 [![Releases](https://img.shields.io/github/v/release/zyn-org/zyn?include_prereleases)](https://github.com/zyn-org/zyn/releases)
 [![LICENSE](https://img.shields.io/github/license/zyn-org/zyn)](https://github.com/zyn-org/zyn/blob/master/LICENSE)
 
-A high-performance real-time messaging server for pub/sub communication.
+A messaging server built for real-time pub/sub communication with modular application logic.
 
 ## Features
 
@@ -215,6 +215,3 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 - **Issues**: [GitHub Issues](https://github.com/zyn-org/zyn/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/zyn-org/zyn/discussions)
 
----
-
-Built with ❤️ by the Zyn team
