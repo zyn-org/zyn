@@ -152,7 +152,7 @@ cargo build --bin zyn-bench --release
   --producers 1 \
   --consumers 1 \
   --duration 1m \
-  --max-payload-size 8192
+  --max-payload-size 16384
 ```
 
 The benchmark tool simulates multiple producer and consumer clients connecting to a Zyn server and exchanging messages. It reports metrics such as:
@@ -160,12 +160,6 @@ The benchmark tool simulates multiple producer and consumer clients connecting t
 - Latency percentiles (p50, p90, p99)
 - Connection success rates
 - Total messages sent and received
-
-This is useful for:
-- Performance testing during development
-- Capacity planning for production deployments
-- Validating configuration changes
-- Regression testing across versions
 
 ### Running with Debug Tracing
 
