@@ -150,7 +150,6 @@ Zyn supports three types of connections, each with its own lifecycle:
 **Modulator-To-Server Connections (M2S)**:
 - Initiated by the modulator using [M2S_CONNECT](#m2s_connect)
 - Authenticate via shared secret
-- Only one modulator connection allowed per server
 - Used by modulator to send direct messages to clients
 
 **Connection Persistence:**
@@ -798,7 +797,7 @@ EVENT kind=MEMBER_JOINED channel=!42@example.com zid=bob@example.com owner=false
 
 Heartbeat message to keep the connection alive.
 
-**Direction**: Client → Server
+**Direction**: Server → Client
 
 **Parameters**:
 - `id` (u16, required): Request identifier (must be non-zero)
@@ -814,7 +813,7 @@ PING id=100
 
 Response to a heartbeat message.
 
-**Direction**: Server → Client
+**Direction**: Client → Server
 
 **Parameters**:
 - `id` (u16, required): Request identifier matching the PING message (must be non-zero)
