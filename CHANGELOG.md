@@ -4,6 +4,8 @@ All notable changes to Zyn will be documented in this file.
 
 ## main / unreleased
 
+## 0.2.0 (2024-07-26)
+
 * [CHANGE]: Optimize writes with vectored I/O implementation. [#39](https://github.com/zyn-org/zyn/pull/39)
 * [ENHANCEMENT]: Dynamic fd limits based on config. [#37](https://github.com/zyn-org/zyn/pull/37)
 * [ENHANCEMENT]: Add flush batching support for improved connection throughput. [#45](https://github.com/zyn-org/zyn/pull/45)

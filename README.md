@@ -138,6 +138,38 @@ zyn/
 cargo test
 ```
 
+### Benchmarking Performance
+
+Zyn includes a benchmark tool to measure throughput and latency performance:
+
+```bash
+# Build the benchmark tool
+cargo build --bin zyn-bench --release
+
+# Run a basic benchmark against a local server
+./target/release/zyn-bench
+
+# Run with custom parameters
+./target/release/zyn-bench \
+  --server 127.0.0.1:22622 \
+  --producers 5 \
+  --consumers 50 \
+  --duration 1m \
+  --max-payload-size 8192
+```
+
+The benchmark tool simulates multiple producer and consumer clients connecting to a Zyn server and exchanging messages. It reports metrics such as:
+- Message throughput (messages/second)
+- Latency percentiles (p50, p90, p99)
+- Connection success rates
+- Total messages sent and received
+
+This is useful for:
+- Performance testing during development
+- Capacity planning for production deployments
+- Validating configuration changes
+- Regression testing across versions
+
 ### Running with Debug Tracing
 
 ```bash
@@ -146,7 +178,7 @@ RUST_LOG=debug cargo run --bin zyn-server
 
 ## Project Status
 
-**Current Version: 0.1.0 (Alpha)**
+**Current Version: 0.2.0 (Alpha)**
 
 Zyn is in active development and currently in **alpha** stage. While the core functionality is working and tested, please note:
 
