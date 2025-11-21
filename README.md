@@ -147,13 +147,10 @@ Zyn includes a benchmark tool to measure throughput and latency performance:
 cargo build --bin zyn-bench --release
 
 # Run a basic benchmark against a local server
-./target/release/zyn-bench
-
-# Run with custom parameters
 ./target/release/zyn-bench \
   --server 127.0.0.1:22622 \
-  --producers 5 \
-  --consumers 50 \
+  --producers 1 \
+  --consumers 1 \
   --duration 1m \
   --max-payload-size 8192
 ```
