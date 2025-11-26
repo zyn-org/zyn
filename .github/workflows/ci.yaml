@@ -18,11 +18,20 @@ jobs:
       # Cache build artifacts
       - uses: Swatinem/rust-cache@v2
 
+      # Install cargo-audit
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
       # Validate example modulators compile
       - name: Build example modulators
         run: |
           cd examples/modulator
           cargo build --workspace --all-features
+
+      # Security checks
+      - name: Security checks
+        run: |
+          cargo audit
 
       # Build & test
       - run: cargo fmt --all -- --check

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use zyn_protocol::Message;
 use zyn_util::{pool::PoolBuffer, string_atom::StringAtom};
