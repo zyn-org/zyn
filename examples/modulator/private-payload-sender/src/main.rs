@@ -1,6 +1,6 @@
 // A modulator that sends private payload periodically to a concrete target.
 //
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use std::fs;
 use std::time::Duration;

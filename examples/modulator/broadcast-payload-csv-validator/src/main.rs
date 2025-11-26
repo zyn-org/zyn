@@ -1,6 +1,6 @@
 // A modulator that validates that payloads are in JSON format.
 //
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 use std::fs;
 use std::io::Cursor;

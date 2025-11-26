@@ -2,6 +2,7 @@
 name = "zyn-server"
 version = "0.2.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 # Binary target for the main binary
 [[bin]]

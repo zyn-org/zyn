@@ -1,8 +1,9 @@
 [package]
 name = "broadcast-payload-json-validator"
 description = "A JSON payload validator for Zyn protocol"
-version = "1.0.0"
+version = "0.2.0"
 edition = "2024"
+license = "AGPL-3.0-only"
 
 [dependencies]
 anyhow = "1.0.100"

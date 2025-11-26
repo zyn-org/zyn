@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /// The commit hash of the application.
 pub const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
