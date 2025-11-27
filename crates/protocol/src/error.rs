@@ -139,7 +139,7 @@ impl std::fmt::Display for ErrorReason {
 #[derive(Clone, Debug)]
 pub struct Error {
   /// The error correlation id.
-  pub id: Option<u16>,
+  pub id: Option<u32>,
 
   /// The error reason.
   pub reason: ErrorReason,
@@ -155,7 +155,7 @@ impl Error {
   }
 
   /// Sets the error correlation ID.
-  pub fn with_id(mut self, id: u16) -> Self {
+  pub fn with_id(mut self, id: u32) -> Self {
     self.id = Some(id);
     self
   }

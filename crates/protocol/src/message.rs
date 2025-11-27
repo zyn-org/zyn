@@ -26,7 +26,7 @@ pub trait ProtocolMessageParameters {
 #[derive(Debug, Default)]
 pub struct PayloadInfo {
   /// The message identifier associated with the payload.
-  pub id: Option<u16>,
+  pub id: Option<u32>,
 
   /// The length of the payload in bytes.
   pub length: usize,
@@ -97,7 +97,7 @@ pub struct AuthAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct BroadcastParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -109,13 +109,13 @@ pub struct BroadcastParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct BroadcastAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ChannelAclParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -128,7 +128,7 @@ pub struct ChannelAclParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ChannelConfigurationParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -158,7 +158,7 @@ pub struct ConnectAckParameters {
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ErrorParameters {
-  pub id: Option<u16>,
+  pub id: Option<u32>,
 
   #[param(validate = "non_empty")]
   pub reason: StringAtom,
@@ -180,7 +180,7 @@ pub struct EventParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct GetChannelAclParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -189,7 +189,7 @@ pub struct GetChannelAclParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct GetChannelConfigurationParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -210,7 +210,7 @@ pub struct IdentifyAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct JoinChannelParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub channel: Option<StringAtom>,
 
@@ -220,7 +220,7 @@ pub struct JoinChannelParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct JoinChannelAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub channel: StringAtom,
 }
@@ -228,7 +228,7 @@ pub struct JoinChannelAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct LeaveChannelParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -239,13 +239,13 @@ pub struct LeaveChannelParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct LeaveChannelAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ListChannelsParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub owner: bool,
 }
@@ -253,14 +253,14 @@ pub struct ListChannelsParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ListChannelsAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
   pub channels: Vec<StringAtom>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ListMembersParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -269,7 +269,7 @@ pub struct ListMembersParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ListMembersAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -305,7 +305,7 @@ pub struct M2sConnectAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct M2sModDirectParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub targets: Vec<StringAtom>,
@@ -317,7 +317,7 @@ pub struct M2sModDirectParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct M2sModDirectAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -334,7 +334,7 @@ pub struct MessageParameters {
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ModDirectParameters {
-  pub id: Option<u16>,
+  pub id: Option<u32>,
 
   #[param(validate = "non_empty")]
   pub from: StringAtom,
@@ -346,25 +346,25 @@ pub struct ModDirectParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct ModDirectAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct PingParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct PongParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mAuthParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub token: StringAtom,
@@ -373,7 +373,7 @@ pub struct S2mAuthParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mAuthAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub challenge: Option<StringAtom>,
   pub username: Option<StringAtom>,
@@ -415,7 +415,7 @@ pub struct S2mConnectAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct SetChannelAclParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -428,7 +428,7 @@ pub struct SetChannelAclParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct SetChannelConfigurationParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
@@ -440,7 +440,7 @@ pub struct SetChannelConfigurationParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mForwardEventParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub channel: Option<StringAtom>,
 
@@ -455,13 +455,13 @@ pub struct S2mForwardEventParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mForwardEventAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mForwardBroadcastPayloadParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub from: StringAtom,
@@ -476,7 +476,7 @@ pub struct S2mForwardBroadcastPayloadParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mForwardBroadcastPayloadAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub valid: bool,
 
@@ -488,7 +488,7 @@ pub struct S2mForwardBroadcastPayloadAckParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mModDirectParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   #[param(validate = "non_empty")]
   pub from: StringAtom,
@@ -500,7 +500,7 @@ pub struct S2mModDirectParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct S2mModDirectAckParameters {
   #[param(validate = "non_zero")]
-  pub id: u16,
+  pub id: u32,
 
   pub valid: bool,
 }
@@ -800,7 +800,7 @@ impl Message {
   }
 
   /// Gets the correlation ID from the message if present.
-  pub fn correlation_id(&self) -> Option<u16> {
+  pub fn correlation_id(&self) -> Option<u32> {
     match self {
       // messages with required id field
       Message::Broadcast(params) => Some(params.id),

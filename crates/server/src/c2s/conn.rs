@@ -480,7 +480,7 @@ impl C2sDispatcherInner {
   async fn dispatch_broadcast_message(&mut self, msg: Message, payload: PoolBuffer) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::Broadcast { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
 
     if let Message::Broadcast(params) = msg {
@@ -561,7 +561,7 @@ impl C2sDispatcherInner {
   async fn dispatch_get_channel_acl_message(&mut self, msg: Message) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::GetChannelAcl { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
 
     if let Message::GetChannelAcl(params) = msg {
@@ -603,7 +603,7 @@ impl C2sDispatcherInner {
     assert!(matches!(msg, Message::GetChannelConfiguration { .. }));
 
     let mut channel_id: Option<ChannelId> = None;
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
 
     if let Message::GetChannelConfiguration(params) = msg {
       correlation_id = params.id;
@@ -649,7 +649,7 @@ impl C2sDispatcherInner {
   async fn dispatch_set_channel_acl_message(&mut self, msg: Message) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::SetChannelAcl { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
     let mut acl = ChannelAcl::default();
 
@@ -715,7 +715,7 @@ impl C2sDispatcherInner {
   async fn dispatch_set_channel_configuration_message(&mut self, msg: Message) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::SetChannelConfiguration { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
 
     let mut channel_config = ChannelConfig::default();
@@ -774,7 +774,7 @@ impl C2sDispatcherInner {
     assert!(matches!(msg, Message::JoinChannel { .. }));
 
     let mut channel_id: Option<ChannelId> = None;
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut on_behalf_zid: Option<Zid> = None;
 
     if let Message::JoinChannel(params) = msg {
@@ -837,7 +837,7 @@ impl C2sDispatcherInner {
     assert!(matches!(msg, Message::LeaveChannel { .. }));
 
     let mut channel_id: Option<ChannelId> = None;
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut on_behalf_zid: Option<Zid> = None;
 
     if let Message::LeaveChannel(params) = msg {
@@ -878,7 +878,7 @@ impl C2sDispatcherInner {
   async fn dispatch_list_channels_message(&mut self, msg: Message) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::ListChannels { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut as_owner: bool = false;
 
     if let Message::ListChannels(params) = msg {
@@ -914,7 +914,7 @@ impl C2sDispatcherInner {
   async fn dispatch_list_members_message(&mut self, msg: Message) -> anyhow::Result<()> {
     assert!(matches!(msg, Message::ListMembers { .. }));
 
-    let mut correlation_id: u16 = 0;
+    let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
 
     if let Message::ListMembers(params) = msg {
@@ -969,7 +969,7 @@ impl C2sDispatcherInner {
       _ => unreachable!(),
     };
 
-    let correlation_id: u16 = {
+    let correlation_id: u32 = {
       match params.id {
         Some(id) => id,
         None => return Err(zyn_protocol::Error::new(BadRequest).into()),
