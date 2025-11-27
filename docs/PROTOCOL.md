@@ -175,7 +175,7 @@ The server enforces the following limits, communicated during connection establi
 The Zyn protocol guarantees that messages on a single TCP connection are processed in the order they are received. However, the protocol supports request pipelining through correlation IDs:
 
 - Clients can send multiple requests without waiting for responses
-- Each request that expects a response includes an `id` parameter (u16, 1-65535)
+- Each request that expects a response includes an `id` parameter (u32, 1-4294967295)
 - Responses include the same `id` to correlate with the original request
 - The server may process requests concurrently but returns responses in any order
 - Clients must track outstanding requests by their correlation IDs
@@ -432,7 +432,7 @@ Requests to join a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, optional): Channel ID to join
 - `on_behalf` (string, optional): ZID to join on behalf of (for privileged operations)
 
@@ -450,7 +450,7 @@ Acknowledges a channel join request.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the JOIN message (must be non-zero)
+- `id` (u32, required): Request identifier matching the JOIN message (must be non-zero)
 - `channel` (string, required): Channel ID that was joined
 
 **Example**:
@@ -467,7 +467,7 @@ Requests to leave a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to leave (must be non-empty)
 - `on_behalf` (string, optional): ZID to remove from channel (for privileged operations)
 
@@ -485,7 +485,7 @@ Acknowledges a channel leave request.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the LEAVE message (must be non-zero)
+- `id` (u32, required): Request identifier matching the LEAVE message (must be non-zero)
 
 **Example**:
 ```
@@ -501,7 +501,7 @@ Sends a message to all members of a channel. This message includes a payload.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Target channel ID (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -520,7 +520,7 @@ Acknowledges a broadcast message.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the BROADCAST message (must be non-zero)
+- `id` (u32, required): Request identifier matching the BROADCAST message (must be non-zero)
 
 **Example**:
 ```
@@ -555,7 +555,7 @@ Sends or receives a direct message to/from a modulator for application-specific 
 **Direction**: Bidirectional (Client ↔ Server)
 
 **Parameters**:
-- `id` (u16, optional): Request identifier for client-initiated messages
+- `id` (u32, optional): Request identifier for client-initiated messages
 - `from` (string, required): Sender ZID (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -580,7 +580,7 @@ Acknowledges a direct message to the modulator (when initiated by client).
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the MOD_DIRECT message (must be non-zero)
+- `id` (u32, required): Request identifier matching the MOD_DIRECT message (must be non-zero)
 
 **Example**:
 ```
@@ -596,7 +596,7 @@ Requests a list of channels.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `owner` (bool, required): If true, list only channels owned by the requester
 
 **Example**:
@@ -613,7 +613,7 @@ Returns a list of channels.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the CHANNELS message (must be non-zero)
+- `id` (u32, required): Request identifier matching the CHANNELS message (must be non-zero)
 - `channels` (string[], required): Array of channel IDs
 
 **Example**:
@@ -630,7 +630,7 @@ Requests a list of members in a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
 
 **Example**:
@@ -647,7 +647,7 @@ Returns a list of channel members.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the MEMBERS message (must be non-zero)
+- `id` (u32, required): Request identifier matching the MEMBERS message (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
 - `members` (string[], required): Array of member ZIDs
 
@@ -665,7 +665,7 @@ Requests the access control list for a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
 
 **Example**:
@@ -682,7 +682,7 @@ Returns or sets the access control list for a channel.
 **Direction**: Server → Client (in response to GET_CHAN_ACL)
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
 - `allow_join` (string[], required): Array of ZID patterns allowed to join
 - `allow_publish` (string[], required): Array of ZID patterns allowed to publish
@@ -702,7 +702,7 @@ Sets the access control list for a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to modify (must be non-empty)
 - `allow_join` (string[], required): Array of ZID patterns allowed to join
 - `allow_publish` (string[], required): Array of ZID patterns allowed to publish
@@ -724,7 +724,7 @@ Requests the configuration for a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
 
 **Example**:
@@ -741,7 +741,7 @@ Returns or sets the configuration for a channel.
 **Direction**: Server → Client (in response to GET_CHAN_CONFIG)
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
 - `max_clients` (u32, required): Maximum number of clients allowed in the channel
 - `max_payload_size` (u32, required): Maximum payload size in bytes
@@ -760,7 +760,7 @@ Sets the configuration for a channel.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to modify (must be non-empty)
 - `max_clients` (u32, required): Maximum number of clients allowed in the channel
 - `max_payload_size` (u32, required): Maximum payload size in bytes
@@ -800,7 +800,7 @@ Heartbeat message to keep the connection alive.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 
 **Example**:
 ```
@@ -816,7 +816,7 @@ Response to a heartbeat message.
 **Direction**: Client → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the PING message (must be non-zero)
+- `id` (u32, required): Request identifier matching the PING message (must be non-zero)
 
 **Example**:
 ```
@@ -832,7 +832,7 @@ Indicates an error condition.
 **Direction**: Server → Client
 
 **Parameters**:
-- `id` (u16, optional): Correlation identifier for the failed request
+- `id` (u32, optional): Correlation identifier for the failed request
 - `reason` (string, required): Error reason code (must be non-empty, see [Error Reasons](#error-reasons))
 - `detail` (string, optional): Human-readable error details
 
@@ -889,7 +889,7 @@ Delegates user authentication to the modulator's application protocol. This mess
 **Direction**: Server → Modulator
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `token` (string, required): Authentication token to validate (must be non-empty)
 
 **Example**:
@@ -908,7 +908,7 @@ Returns authentication result from the modulator's application protocol. This is
 **Direction**: Modulator → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the S2M_AUTH message (must be non-zero)
+- `id` (u32, required): Request identifier matching the S2M_AUTH message (must be non-zero)
 - `challenge` (string, optional): Challenge for additional authentication steps
 - `username` (string, optional): Authenticated username (the server combines this with its domain to form the full ZID)
 - `succeeded` (bool, required): Whether authentication succeeded
@@ -929,7 +929,7 @@ Forwards a channel event to the modulator for application-specific processing.
 **Direction**: Server → Modulator
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, optional): Channel ID where the event occurred
 - `kind` (string, required): Event type (must be non-empty, see [Event Kinds](#event-kinds))
 - `zid` (string, optional): ZID associated with the event
@@ -949,7 +949,7 @@ Acknowledges event processing by modulator.
 **Direction**: Modulator → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the S2M_FORWARD_EVENT message (must be non-zero)
+- `id` (u32, required): Request identifier matching the S2M_FORWARD_EVENT message (must be non-zero)
 
 **Example**:
 ```
@@ -965,7 +965,7 @@ Forwards a broadcast message payload to the modulator for application-specific v
 **Direction**: Server → Modulator
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `from` (string, required): Sender ZID (must be non-empty)
 - `channel` (u32, required): Channel handler number (must be non-zero)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
@@ -985,7 +985,7 @@ Returns the processing result for a broadcast payload from the modulator. May in
 **Direction**: Modulator → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the S2M_FORWARD_BROADCAST_PAYLOAD message (must be non-zero)
+- `id` (u32, required): Request identifier matching the S2M_FORWARD_BROADCAST_PAYLOAD message (must be non-zero)
 - `valid` (bool, required): Whether the payload is allowed
 - `altered_payload` (bool, required): Whether the payload was modified
 - `altered_payload_length` (u32, required): Size of modified payload in bytes (0 if not altered)
@@ -1010,7 +1010,7 @@ Forwards a direct message from a client to the modulator for application-specifi
 **Direction**: Server → Modulator
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `from` (string, required): Sender ZID (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -1029,7 +1029,7 @@ Acknowledges receipt and processing of a direct message by the modulator.
 **Direction**: Modulator → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the S2M_MOD_DIRECT message (must be non-zero)
+- `id` (u32, required): Request identifier matching the S2M_MOD_DIRECT message (must be non-zero)
 - `valid` (bool, required): Whether the message was processed successfully
 
 **Example**:
@@ -1085,7 +1085,7 @@ Sends a direct message from modulator to specific clients for application-specif
 **Direction**: Modulator → Server
 
 **Parameters**:
-- `id` (u16, required): Request identifier (must be non-zero)
+- `id` (u32, required): Request identifier (must be non-zero)
 - `targets` (string[], required): Array of target ZIDs (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -1104,7 +1104,7 @@ Acknowledges a direct message from modulator.
 **Direction**: Server → Modulator
 
 **Parameters**:
-- `id` (u16, required): Request identifier matching the M2S_MOD_DIRECT message (must be non-zero)
+- `id` (u32, required): Request identifier matching the M2S_MOD_DIRECT message (must be non-zero)
 
 **Example**:
 ```

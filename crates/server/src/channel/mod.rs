@@ -52,7 +52,7 @@ struct ChannelManagerInner {
 // ===== impl ChannelManagerInner =====
 
 impl ChannelManagerInner {
-  fn check_subscription_limit(&self, username: &StringAtom, correlation_id: u16) -> anyhow::Result<()> {
+  fn check_subscription_limit(&self, username: &StringAtom, correlation_id: u32) -> anyhow::Result<()> {
     if let Some(in_channels) = self.in_channels.get(username)
       && in_channels.len() >= self.max_channels_per_client as usize
     {
@@ -66,7 +66,7 @@ impl ChannelManagerInner {
     Ok(())
   }
 
-  fn validate_channel_configuration(&self, config: &ChannelConfig, correlation_id: u16) -> anyhow::Result<()> {
+  fn validate_channel_configuration(&self, config: &ChannelConfig, correlation_id: u32) -> anyhow::Result<()> {
     if config.max_clients > self.max_clients_per_channel {
       return Err(
         zyn_protocol::Error::new(BadRequest)
@@ -152,7 +152,7 @@ impl ChannelManager {
     zid: Zid,
     as_owner: bool,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -197,7 +197,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -246,7 +246,7 @@ impl ChannelManager {
     &mut self,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<ChannelId> {
     let mut inner = self.0.write().await;
 
@@ -314,7 +314,7 @@ impl ChannelManager {
     zid: Zid,
     oh_behalf_zid: Option<Zid>,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let mut inner = self.0.write().await;
 
@@ -410,7 +410,7 @@ impl ChannelManager {
     zid: Zid,
     on_behalf_zid: Option<Zid>,
     transmitter: Option<Arc<dyn Transmitter>>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let mut inner = self.0.write().await;
 
@@ -527,7 +527,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -586,7 +586,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -660,7 +660,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -709,7 +709,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 
@@ -768,7 +768,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
-    correlation_id: u16,
+    correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
 

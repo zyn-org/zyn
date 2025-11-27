@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::io::Cursor;
 use std::marker::PhantomData;
-use std::sync::atomic::AtomicU16;
+use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, atomic};
 use std::time::Duration;
 
@@ -240,8 +240,8 @@ where
   ///
   /// # Returns
   ///
-  /// A unique `u16` correlation ID that can be used for message tracking.
-  pub async fn next_id(&self) -> u16 {
+  /// A unique `u32` correlation ID that can be used for message tracking.
+  pub async fn next_id(&self) -> u32 {
     let inner = self.0.lock().await;
     inner.next_id()
   }
@@ -282,10 +282,10 @@ where
   config: Arc<Config>,
 
   /// The next correlation id.
-  next_id: AtomicU16,
+  next_id: AtomicU32,
 
   /// The next connection id.
-  next_conn_id: AtomicU16,
+  next_conn_id: AtomicU32,
 
   /// The dialer used to establish connections.
   dialer: Arc<dyn Dialer<Stream = S>>,
@@ -342,8 +342,8 @@ where
     Ok(Self {
       client_id: arc_client_id,
       config: arc_config,
-      next_id: AtomicU16::new(1),
-      next_conn_id: AtomicU16::new(1),
+      next_id: AtomicU32::new(1),
+      next_conn_id: AtomicU32::new(1),
       dialer,
       handshaker,
       conn: None,
@@ -383,8 +383,8 @@ where
     Ok(Self {
       client_id: arc_client_id,
       config: arc_config,
-      next_id: AtomicU16::new(1),
-      next_conn_id: AtomicU16::new(1),
+      next_id: AtomicU32::new(1),
+      next_conn_id: AtomicU32::new(1),
       dialer,
       handshaker,
       conn: None,
@@ -491,7 +491,7 @@ where
     }
   }
 
-  fn next_id(&self) -> u16 {
+  fn next_id(&self) -> u32 {
     self
       .next_id
       .fetch_update(atomic::Ordering::SeqCst, atomic::Ordering::SeqCst, |cur| {
@@ -518,7 +518,7 @@ where
   config: Arc<Config>,
 
   /// unique connection ID generator.
-  next_conn_id: atomic::AtomicU16,
+  next_conn_id: atomic::AtomicU32,
 
   /// The dialer used to establish connections.
   dialer: Arc<dyn Dialer<Stream = S>>,
@@ -549,7 +549,7 @@ where
     Self {
       client_id,
       config,
-      next_conn_id: atomic::AtomicU16::new(1),
+      next_conn_id: atomic::AtomicU32::new(1),
       dialer,
       handshaker,
       inbound_tx,
@@ -675,7 +675,7 @@ struct PendingRequest {
 }
 
 #[derive(Clone)]
-struct PendingRequests(Arc<PlRwLock<HashMap<u16, PendingRequest>>>);
+struct PendingRequests(Arc<PlRwLock<HashMap<u32, PendingRequest>>>);
 
 // == impl PendingRequests ===
 
@@ -685,18 +685,18 @@ impl PendingRequests {
   }
 
   #[inline]
-  fn insert(&self, correlation_id: u16, request: PendingRequest) {
+  fn insert(&self, correlation_id: u32, request: PendingRequest) {
     self.0.write().insert(correlation_id, request);
   }
 
   #[inline]
-  fn take_response_sender(&self, correlation_id: u16) -> Option<ResponseSender> {
+  fn take_response_sender(&self, correlation_id: u32) -> Option<ResponseSender> {
     let mut pending_requests = self.0.write();
     pending_requests.get_mut(&correlation_id).and_then(|request| request.sender.take())
   }
 
   #[inline]
-  fn remove(&self, correlation_id: &u16) -> Option<PendingRequest> {
+  fn remove(&self, correlation_id: &u32) -> Option<PendingRequest> {
     self.0.write().remove(correlation_id)
   }
 }
@@ -711,7 +711,7 @@ where
   client_id: Arc<String>,
 
   /// Unique connection ID.
-  conn_id: u16,
+  conn_id: u32,
 
   /// The configuration for the client.
   config: Arc<Config>,
@@ -760,7 +760,7 @@ where
 {
   fn new(
     client_id: Arc<String>,
-    conn_id: u16,
+    conn_id: u32,
     config: Arc<Config>,
     dialer: Arc<dyn Dialer<Stream = S>>,
     handshaker: HS,
@@ -943,7 +943,7 @@ where
 
   async fn writer_task(
     client_id: Arc<String>,
-    conn_id: u16,
+    conn_id: u32,
     mut wh: WriteHalf<S>,
     mut rx: Receiver<(Message, Option<PoolBuffer>)>,
     mut message_buff: MutablePoolBuffer,
@@ -994,7 +994,7 @@ where
   #[allow(clippy::too_many_arguments)]
   async fn reader_task(
     client_id: Arc<String>,
-    conn_id: u16,
+    conn_id: u32,
     rh: ReadHalf<S>,
     read_buffer: MutablePoolBuffer,
     payload_buffer_pool: Pool,

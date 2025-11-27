@@ -513,7 +513,7 @@ pub struct ConnInner<D: Dispatcher> {
   tx: ConnTx,
 
   /// The currently assigned heartbeat ID.
-  heartbeat_id: Option<u16>,
+  heartbeat_id: Option<u32>,
 
   /// Track tasks associated with connection requests.
   task_tracker: TaskTracker,
@@ -690,7 +690,7 @@ impl<D: Dispatcher> ConnInner<D> {
     let heartbeat_timeout = heartbeat_interval * 3;
 
     // Generate a random ping ID.
-    let ping_id: u16 = random();
+    let ping_id: u32 = random();
     self.heartbeat_id = Some(ping_id);
 
     let ping_task = tokio::spawn(async move {
@@ -1070,7 +1070,7 @@ impl<D: Dispatcher> ConnInner<D> {
   async fn read_payload<T>(
     buffer: &mut [u8],
     stream_reader: &mut StreamReader<ReadHalf<T>>,
-    correlation_id: Option<u16>,
+    correlation_id: Option<u32>,
   ) -> anyhow::Result<()>
   where
     T: AsyncRead + Unpin,
