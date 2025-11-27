@@ -4,6 +4,8 @@ All notable changes to Zyn will be documented in this file.
 
 ## main / unreleased
 
+* [CHANGE]: Expand correlation IDs from `u16` to `u32` across protocol. [#60](https://github.com/zyn-org/zyn/pull/60)
+
 ## 0.2.0 (2024-07-26)
 
 * [CHANGE]: Optimize writes with vectored I/O implementation. [#39](https://github.com/zyn-org/zyn/pull/39)
