@@ -503,11 +503,14 @@ Sends a message to all members of a channel. This message includes a payload.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Target channel ID (must be non-empty)
+- `qos` (u8, optional): Quality of Service level (defaults to 1 if not specified)
+  - `0`: Acknowledge as soon as the payload is received
+  - `1`: Acknowledge when the payload has been enqueued for delivery to all channel members
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
 **Example**:
 ```
-BROADCAST id=3 channel=!42@example.com length=1024
+BROADCAST id=3 channel=!42@example.com qos=1 length=1024
 [1024 bytes of binary payload follow]
 ```
 
@@ -515,7 +518,9 @@ BROADCAST id=3 channel=!42@example.com length=1024
 
 ### BROADCAST_ACK
 
-Acknowledges a broadcast message.
+Acknowledges a broadcast message. The timing of this acknowledgment depends on the QoS level specified in the BROADCAST message:
+- QoS 0: Sent immediately when the payload is received
+- QoS 1: Sent after the payload has been enqueued for delivery to all channel members
 
 **Direction**: Server → Client
 

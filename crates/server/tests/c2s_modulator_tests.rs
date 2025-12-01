@@ -394,7 +394,12 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
   suite
     .write_message(
       TEST_USER_1,
-      Message::Broadcast(BroadcastParameters { id: 1, channel: StringAtom::from("!1@localhost"), length: 12 }),
+      Message::Broadcast(BroadcastParameters {
+        id: 1,
+        channel: StringAtom::from("!1@localhost"),
+        qos: None,
+        length: 12,
+      }),
     )
     .await?;
 
@@ -408,7 +413,12 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
   suite
     .write_message(
       TEST_USER_1,
-      Message::Broadcast(BroadcastParameters { id: 1, channel: StringAtom::from("!1@localhost"), length: 12 }),
+      Message::Broadcast(BroadcastParameters {
+        id: 1,
+        channel: StringAtom::from("!1@localhost"),
+        qos: None,
+        length: 12,
+      }),
     )
     .await?;
 
@@ -484,6 +494,7 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
       Message::Broadcast(BroadcastParameters {
         id: 2,
         channel: StringAtom::from("!1@localhost"),
+        qos: None,
         length: input_text.len() as u32,
       }),
     )

@@ -102,6 +102,8 @@ pub struct BroadcastParameters {
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
 
+  pub qos: Option<u8>,
+
   #[param(validate = "non_zero")]
   pub length: u32,
 }
@@ -719,7 +721,13 @@ impl Message {
     match self {
       Auth(params) => params.validate(),
       AuthAck(params) => params.validate(),
-      Broadcast(params) => params.validate(),
+      Broadcast(params) => {
+        params.validate()?;
+
+        params.qos.map(crate::qos::QoS::try_from).transpose()?;
+
+        Ok(())
+      },
       BroadcastAck(params) => params.validate(),
       ChannelAcl(params) => params.validate(),
       ChannelConfiguration(params) => params.validate(),

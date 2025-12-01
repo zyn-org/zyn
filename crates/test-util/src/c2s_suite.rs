@@ -286,6 +286,7 @@ impl C2sSuite {
         Message::Broadcast(BroadcastParameters {
           id: 1234,
           channel: StringAtom::from(channel),
+          qos: None,
           length: payload.len() as u32,
         }),
       )
