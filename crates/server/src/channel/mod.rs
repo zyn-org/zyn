@@ -12,7 +12,7 @@ use zyn_protocol::ErrorReason::{
 };
 use zyn_protocol::{
   BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters, JoinChannelAckParameters,
-  LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message, MessageParameters,
+  LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message, MessageParameters, QoS,
 };
 use zyn_protocol::{ChannelId, Zid};
 use zyn_protocol::{Event, EventKind};
@@ -768,6 +768,7 @@ impl ChannelManager {
     channel_id: ChannelId,
     zid: Zid,
     transmitter: Arc<dyn Transmitter>,
+    qos: Option<u8>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
     let inner = self.0.read().await;
@@ -807,6 +808,11 @@ impl ChannelManager {
           .into(),
       );
     }
+    let qos = qos.map(QoS::try_from).transpose()?.unwrap_or(QoS::default());
+
+    if qos == QoS::AckOnReceive {
+      transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
+    }
 
     // Broadcast the payload to all members of the channel, except
     let msg = Message::Message(MessageParameters {
@@ -823,8 +829,9 @@ impl ChannelManager {
 
     router.route_to_many(msg, Some(payload), targets, Some(transmitter.resource())).await?;
 
-    // Send response back to the client.
-    transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
+    if qos == QoS::AckOnRouted {
+      transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
+    }
 
     Ok(())
   }

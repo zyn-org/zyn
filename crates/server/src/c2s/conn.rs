@@ -482,10 +482,12 @@ impl C2sDispatcherInner {
 
     let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
+    let mut qos: Option<u8> = None;
 
     if let Message::Broadcast(params) = msg {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
+      qos = params.qos;
     }
     let channel_id = channel_id.unwrap();
 
@@ -531,7 +533,7 @@ impl C2sDispatcherInner {
 
     self
       .channel_manager
-      .broadcast_payload(altered_payload, channel_id.clone(), zid.clone(), transmitter, correlation_id)
+      .broadcast_payload(altered_payload, channel_id.clone(), zid.clone(), transmitter, qos, correlation_id)
       .await?;
 
     info!(

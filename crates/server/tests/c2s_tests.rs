@@ -1256,7 +1256,12 @@ async fn test_c2s_broadcast_invalid_payload() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::Broadcast(BroadcastParameters { id: 1234, channel: StringAtom::from("!1@localhost"), length: 1 }),
+      Message::Broadcast(BroadcastParameters {
+        id: 1234,
+        channel: StringAtom::from("!1@localhost"),
+        qos: None,
+        length: 1,
+      }),
     )
     .await?;
 
@@ -1311,7 +1316,12 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_2,
-      Message::Broadcast(BroadcastParameters { id: 1234, channel: StringAtom::from("!1@localhost"), length: 1 }),
+      Message::Broadcast(BroadcastParameters {
+        id: 1234,
+        channel: StringAtom::from("!1@localhost"),
+        qos: None,
+        length: 1,
+      }),
     )
     .await?;
 

@@ -30,6 +30,11 @@ impl Parameter<'_> {
     Ok(StringAtom::from(std::str::from_utf8(self.value)?))
   }
 
+  pub fn as_u8(&self) -> anyhow::Result<u8> {
+    let v: u8 = std::str::from_utf8(self.value)?.parse()?;
+    Ok(v)
+  }
+
   pub fn as_u16(&self) -> anyhow::Result<u16> {
     let v: u16 = std::str::from_utf8(self.value)?.parse()?;
     Ok(v)
@@ -274,7 +279,7 @@ mod tests {
     let test_cases = vec![
     TestCase { name: "AUTH", input: b"AUTH id=1 token=a_token", expected: Ok(Message::Auth(AuthParameters {  token: StringAtom::from("a_token") })) },
     TestCase { name: "AUTH_ACK", input: b"AUTH_ACK id=1 succeeded=false challenge=1234567890 username=test_user zid=test_user@localhost", expected: Ok(Message::AuthAck(AuthAckParameters {  succeeded: Some(false), challenge: Some(StringAtom::from("1234567890")),  zid: Some(StringAtom::from("test_user@localhost")) })) },
-    TestCase { name: "BROADCAST", input: b"BROADCAST id=1 channel=!1@localhost length=10", expected: Ok(Message::Broadcast(BroadcastParameters { id: 1, channel: StringAtom::from("!1@localhost"), length: 10 })) },
+    TestCase { name: "BROADCAST", input: b"BROADCAST id=1 channel=!1@localhost length=10 qos=1", expected: Ok(Message::Broadcast(BroadcastParameters { id: 1, channel: StringAtom::from("!1@localhost"), qos: Some(1), length: 10 })) },
     TestCase { name: "BROADCAST_ACK", input: b"BROADCAST_ACK id=1", expected: Ok(Message::BroadcastAck(BroadcastAckParameters { id: 1 })) },
     TestCase {
             name: "CHAN_ACL",

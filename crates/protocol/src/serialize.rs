@@ -42,6 +42,12 @@ impl<'a> ParameterValueDisplay<'a> for StringAtom {
   }
 }
 
+impl<'a> ParameterValueDisplay<'a> for u8 {
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
+    write!(c, "{}", self)
+  }
+}
+
 impl<'a> ParameterValueDisplay<'a> for u16 {
   fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
     write!(c, "{}", self)
@@ -165,8 +171,8 @@ mod tests {
             },
             TestCase {
                 name: "BROADCAST",
-                msg: Message::Broadcast(BroadcastParameters { id: 1, channel: "!1@localhost".into(), length: 10 }),
-                expected_out: Some("BROADCAST id=1 channel=!1@localhost length=10\n".to_string()),
+                msg: Message::Broadcast(BroadcastParameters { id: 1, channel: "!1@localhost".into(), qos: Some(1), length: 10 }),
+                expected_out: Some("BROADCAST id=1 channel=!1@localhost length=10 qos=1\n".to_string()),
             },
             TestCase {
                 name: "BROADCAST_ACK",

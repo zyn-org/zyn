@@ -5,6 +5,7 @@ mod error;
 mod event;
 mod id;
 mod message;
+mod qos;
 mod serialize;
 mod stream;
 
@@ -14,5 +15,6 @@ pub use error::*;
 pub use event::*;
 pub use id::*;
 pub use message::*;
+pub use qos::*;
 pub use serialize::serialize;
 pub use stream::request;

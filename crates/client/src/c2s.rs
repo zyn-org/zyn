@@ -606,7 +606,7 @@ impl C2sClient {
 
     let id = self.client.next_id().await;
     let length = payload.len() as u32;
-    let message = Message::Broadcast(BroadcastParameters { id, channel, length });
+    let message = Message::Broadcast(BroadcastParameters { id, channel, qos: None, length });
 
     let handle = self.client.send_message(message, Some(payload)).await?;
     let (response, _) = handle.await??;
