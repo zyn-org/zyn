@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
-use tokio_util::sync::CancellationToken;
 
 use anyhow::Result;
 use clap::Parser;
 use futures::StreamExt;
 use futures::future::join_all;
 use rand::prelude::*;
+use tokio::sync::Mutex;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use zyn_client::c2s::{AuthMethod, C2sClient, C2sConfig};
 use zyn_util::pool::Pool;
@@ -304,48 +307,61 @@ async fn broadcast_messages(
   let deadline = tokio::time::Instant::now() + duration;
   let mut broadcast_tasks = Vec::new();
 
-  let pool = Pool::new(clients.len(), max_payload_size);
-
   // Create a histogram for tracking latencies (max 60s, 3 significant digits)
-  let histogram =
-    std::sync::Arc::new(std::sync::Mutex::new(hdrhistogram::Histogram::<u64>::new_with_bounds(1, 60_000, 3).unwrap()));
+  let arc_histogram = Arc::new(Mutex::new(hdrhistogram::Histogram::<u64>::new_with_bounds(1, 60_000, 3).unwrap()));
 
   for (client_idx, client) in clients.iter().enumerate() {
     let client = client.clone();
-    let ch = channel.clone();
+    let client_channel = channel.clone();
     let end_time = deadline;
 
-    let client_pool = pool.clone();
-    let hist = histogram.clone();
+    let max_inflight_requests =
+      client.session_info().await.ok().map(|(info, _)| info.max_inflight_requests).unwrap_or(1);
+
+    let client_pool = Pool::new(max_inflight_requests as usize, max_payload_size);
+    let client_hist = arc_histogram.clone();
 
     let task = tokio::spawn(async move {
       let mut count = 0u64;
 
-      let mut message_idx = 0;
+      let mut task_set = JoinSet::new();
 
-      while tokio::time::Instant::now() < end_time {
-        // Create payload buffer with random size (at least 1 byte, at most max_payload_size)
-        let payload_buffer = client_pool.acquire_blocking();
-        let random_size = rand::rng().random_range(1..=max_payload_size);
-        let payload = payload_buffer.freeze(random_size);
+      for _ in 0..max_inflight_requests {
+        let task_channel = client_channel.clone();
+        let task_client = client.clone();
+        let task_payload_pool = client_pool.clone();
 
-        // Measure broadcast latency
-        let start = tokio::time::Instant::now();
+        task_set.spawn(async move {
+          broadcast_message(task_channel, task_client, task_payload_pool, max_payload_size).await
+        });
+      }
 
-        // Broadcast and wait for ack
-        match client.broadcast(ch.clone(), payload).await {
-          Ok(_) => {
-            let latency_ms = start.elapsed().as_millis() as u64;
-            if let Ok(mut h) = hist.lock() {
-              let _ = h.record(latency_ms);
+      while let Some(res) = task_set.join_next().await {
+        match res {
+          Ok(Ok(elapsed_ms)) => {
+            {
+              let mut h = client_hist.lock().await;
+              let _ = h.record(elapsed_ms);
             }
             count += 1;
-            message_idx += 1;
+          },
+          Ok(Err(e)) => {
+            warn!("broadcast failed (client {}): {}", client_idx, e);
           },
           Err(e) => {
-            warn!("broadcast failed (client {}, message: {}): {}", client_idx, message_idx, e);
-            break;
+            warn!("task failed (client {}): {}", client_idx, e);
           },
+        }
+
+        // If we haven't reached the deadline... broadcast a new message
+        if tokio::time::Instant::now() < end_time {
+          let task_channel = client_channel.clone();
+          let task_client = client.clone();
+          let task_payload_pool = client_pool.clone();
+
+          task_set.spawn(async move {
+            broadcast_message(task_channel, task_client, task_payload_pool, max_payload_size).await
+          });
         }
       }
 
@@ -361,11 +377,30 @@ async fn broadcast_messages(
 
   info!("  - total messages sent: {}", total_sent);
 
-  let final_histogram = std::sync::Arc::try_unwrap(histogram)
-    .map(|mutex| mutex.into_inner().unwrap())
-    .unwrap_or_else(|arc| arc.lock().unwrap().clone());
+  let final_histogram = match Arc::try_unwrap(arc_histogram) {
+    Ok(mutex) => mutex.lock().await.clone(),
+    Err(arc) => arc.lock().await.clone(),
+  };
 
   (total_sent, final_histogram)
+}
+
+async fn broadcast_message(
+  channel: StringAtom,
+  client: C2sClient,
+  payload_pool: Pool,
+  max_payload_size: usize,
+) -> anyhow::Result<u64> {
+  let payload_buffer = payload_pool.acquire_blocking();
+  let random_size = rand::rng().random_range(1..=max_payload_size);
+  let payload = payload_buffer.freeze(random_size);
+
+  let start = tokio::time::Instant::now();
+
+  client.broadcast(channel, None, payload).await?;
+  let elapsed_ms = start.elapsed().as_millis() as u64;
+
+  Ok(elapsed_ms)
 }
 
 /// Run the benchmark with the given configuration
