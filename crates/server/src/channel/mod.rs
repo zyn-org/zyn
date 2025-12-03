@@ -154,15 +154,15 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
 
     // Gather all channels the user is a member of and sort them.
     let mut channels: Vec<StringAtom> = Default::default();
 
-    if let Some(in_channels) = inner.in_channels.get(&zid.username) {
+    if let Some(in_channels) = mng_guard.in_channels.get(&zid.username) {
       for channel_id in in_channels.iter() {
         if as_owner {
-          let channel_ref = inner.channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
+          let channel_ref = mng_guard.channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
 
           if channel_ref.read().await.is_owner(&zid) {
             channels.push(channel_id.into());
@@ -172,6 +172,8 @@ impl ChannelManager {
         }
       }
     }
+    drop(mng_guard);
+
     channels.sort();
 
     // Send response back to the client.
@@ -199,16 +201,18 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
+    drop(mng_guard);
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotImplemented).into());
     }
 
     // Check if the channel exists and if the originating connection is a member of it.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -219,6 +223,8 @@ impl ChannelManager {
     }
     // Gather all members of the channel and sort them.
     let mut members: Vec<StringAtom> = channel_guard.members.iter().map(|member_zid| member_zid.into()).collect();
+    drop(channel_guard);
+
     members.sort();
 
     // Send response back to the client.
@@ -248,13 +254,13 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<ChannelId> {
-    let mut inner = self.0.write().await;
+    let mut mng_guard = self.0.write().await;
 
     // Check if maximum number of subscriptions is reached.
-    inner.check_subscription_limit(&zid.username, correlation_id)?;
+    mng_guard.check_subscription_limit(&zid.username, correlation_id)?;
 
     // Acquire a channel.
-    let channel_ref_opt = inner.channels.acquire().await;
+    let channel_ref_opt = mng_guard.channels.acquire().await;
 
     if channel_ref_opt.is_none() {
       return Err(
@@ -265,7 +271,7 @@ impl ChannelManager {
     let mut channel_guard = channel_ref.write().await;
 
     // Initialize the channel.
-    let config = inner.default_channel_configuration();
+    let config = mng_guard.default_channel_configuration();
 
     channel_guard.0 = Some(ChannelInner {
       handler: channel_ref.handler as u32,
@@ -273,7 +279,7 @@ impl ChannelManager {
       config,
       acl: ChannelAcl::default(),
       members: HashSet::new(),
-      notifier: inner.notifier.clone(),
+      notifier: mng_guard.notifier.clone(),
     });
 
     // Insert the member into the channel and update the list of channels
@@ -281,10 +287,12 @@ impl ChannelManager {
     channel_guard.insert_member(zid.clone());
 
     let channel_id =
-      ChannelId::new(channel_ref.handler as u32, inner.router.c2s_router().local_domain().clone()).unwrap();
+      ChannelId::new(channel_ref.handler as u32, mng_guard.router.c2s_router().local_domain().clone()).unwrap();
 
-    let in_channels = &mut inner.in_channels;
+    let in_channels = &mut mng_guard.in_channels;
     in_channels.entry(zid.username.clone()).or_default().insert(channel_id.clone());
+
+    drop(mng_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::JoinChannelAck(JoinChannelAckParameters {
@@ -316,15 +324,17 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let mut inner = self.0.write().await;
+    let mut mng_guard = self.0.write().await;
+
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
     // Check if the channel handler exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -339,7 +349,7 @@ impl ChannelManager {
             return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
 
-          if !inner.router.c2s_router().has_connection(&oh_behalf_zid.username) {
+          if !mng_guard.router.c2s_router().has_connection(&oh_behalf_zid.username) {
             return Err(zyn_protocol::Error::new(UserNotRegistered).with_id(correlation_id).into());
           }
 
@@ -365,7 +375,7 @@ impl ChannelManager {
       return Err(zyn_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
     }
     // Check if the maximum number of subscriptions is reached.
-    inner.check_subscription_limit(&new_member_zid.username, correlation_id)?;
+    mng_guard.check_subscription_limit(&new_member_zid.username, correlation_id)?;
 
     channel_guard.insert_member(new_member_zid.clone());
 
@@ -374,13 +384,15 @@ impl ChannelManager {
         &new_member_zid,
         Some(transmitter.resource()),
         false,
-        inner.router.c2s_router().local_domain().clone(),
+        mng_guard.router.c2s_router().local_domain().clone(),
       )
       .await?;
 
     // Update the list of channels the connection is a member of.
-    let in_channels = &mut inner.in_channels;
+    let in_channels = &mut mng_guard.in_channels;
     in_channels.entry(new_member_zid.username.clone()).or_default().insert(channel_id.clone());
+
+    drop(mng_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::JoinChannelAck(JoinChannelAckParameters {
@@ -412,15 +424,17 @@ impl ChannelManager {
     transmitter: Option<Arc<dyn Transmitter>>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let mut inner = self.0.write().await;
+    let mut mng_guard = self.0.write().await;
+
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
     // Check if the channel exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -448,19 +462,21 @@ impl ChannelManager {
     let resource = transmitter.as_ref().map(|transmitter| transmitter.resource());
 
     channel_guard
-      .notify_member_left(&left_member_zid, resource, as_owner, inner.router.c2s_router().local_domain().clone())
+      .notify_member_left(&left_member_zid, resource, as_owner, router.c2s_router().local_domain().clone())
       .await?;
 
     channel_guard.remove_member(&left_member_zid);
 
     // Update the list of channels the connection is a member of.
-    let in_channels = &mut inner.in_channels;
+    let in_channels = &mut mng_guard.in_channels;
+
     if let Some(in_channels_set) = in_channels.get_mut(&left_member_zid.username) {
       in_channels_set.remove(&channel_id);
       if in_channels_set.is_empty() {
         in_channels.remove(&left_member_zid.username);
       }
     }
+    drop(mng_guard);
 
     // Send response back to the client if a handler is provided.
     if let Some(transmitter) = transmitter {
@@ -481,7 +497,7 @@ impl ChannelManager {
       let new_owner_zid = channel_guard.pick_new_owner().unwrap();
 
       channel_guard
-        .notify_member_joined(&new_owner_zid, None, true, inner.router.c2s_router().local_domain().clone())
+        .notify_member_joined(&new_owner_zid, None, true, router.c2s_router().local_domain().clone())
         .await?;
     }
 
@@ -498,9 +514,9 @@ impl ChannelManager {
   ///
   /// A result indicating success or failure
   pub async fn leave_all_channels(&mut self, zid: Zid) -> anyhow::Result<()> {
-    let mut inner = self.0.write().await;
-    let in_channels_opt = inner.in_channels.remove(&zid.username);
-    drop(inner);
+    let mut mng_guard = self.0.write().await;
+    let in_channels_opt = mng_guard.in_channels.remove(&zid.username);
+    drop(mng_guard);
 
     if let Some(in_channels) = in_channels_opt {
       for channel_id in in_channels.iter() {
@@ -529,16 +545,18 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
+    drop(mng_guard);
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -549,11 +567,14 @@ impl ChannelManager {
       return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
+    // Obtain the channel's ACL.
     let acl = &channel_guard.acl;
 
     let allow_join: Vec<StringAtom> = acl.join_acl.allow_list().iter().map(|z| z.into()).collect();
     let allow_publish: Vec<StringAtom> = acl.publish_acl.allow_list().iter().map(|z| z.into()).collect();
     let allow_read: Vec<StringAtom> = acl.read_acl.allow_list().iter().map(|z| z.into()).collect();
+
+    drop(channel_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
@@ -588,16 +609,18 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
+    drop(mng_guard);
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -630,6 +653,7 @@ impl ChannelManager {
 
     // Update the channel ACL.
     channel_guard.acl = acl.clone();
+    drop(channel_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
@@ -662,11 +686,12 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+    let channels = mng_guard.channels.clone();
+    drop(mng_guard);
 
     // Check if the channel exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -677,7 +702,9 @@ impl ChannelManager {
       return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
-    let config = &channel_guard.config;
+    // Obtain the channel configuration.
+    let config = channel_guard.config.clone();
+    drop(channel_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelConfiguration(ChannelConfigurationParameters {
@@ -711,18 +738,20 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
-
     // Validate the new channel configuration
-    inner.validate_channel_configuration(&config, correlation_id)?;
+    mng_guard.validate_channel_configuration(&config, correlation_id)?;
+    drop(mng_guard);
 
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -771,16 +800,18 @@ impl ChannelManager {
     qos: Option<u8>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let inner = self.0.read().await;
+    let mng_guard = self.0.read().await;
+    let router = mng_guard.router.clone();
+    let channels = mng_guard.channels.clone();
+    drop(mng_guard);
 
     // Ensure the channel is local.
-    if channel_id.domain != inner.router.c2s_router().local_domain() {
+    if channel_id.domain != router.c2s_router().local_domain() {
       return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
-    let channel_ref = inner
-      .channels
+    let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
       .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
@@ -822,10 +853,6 @@ impl ChannelManager {
     });
 
     let targets = channel_guard.members.iter().filter(|m| acl.is_read_allowed(m));
-
-    // Drop the manager guard before starting the broadcast.
-    let router = inner.router.clone();
-    drop(inner);
 
     router.route_to_many(msg, Some(payload), targets, Some(transmitter.resource())).await?;
 
