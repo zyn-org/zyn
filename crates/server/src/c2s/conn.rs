@@ -1054,10 +1054,12 @@ impl zyn_common::conn::Dispatcher for C2sDispatcher {
 
     if let Some(zid) = inner.zid.take() {
       // Leave from all channels.
-      inner.channel_manager.leave_all_channels(zid.clone()).await?;
+      let leave_result = inner.channel_manager.leave_all_channels(zid.clone()).await;
 
       // Unregister the username.
       inner.c2s_router.unregister_connection(&zid.username, inner.transmitter.handler);
+
+      leave_result?;
     }
 
     Ok(())
