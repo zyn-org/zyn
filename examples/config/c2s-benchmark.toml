@@ -9,7 +9,7 @@
 max_clients_per_channel = 5000
 
 # Maximum number of inflight requests per client.
-max_inflight_requests = 100000
+max_inflight_requests = 1000
 
 # When running benchmarks locally, set the outbound message queue size to a high value
 # to prevent disconnects due to outbound queue overflow.

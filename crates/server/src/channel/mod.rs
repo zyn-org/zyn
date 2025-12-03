@@ -279,6 +279,7 @@ impl ChannelManager {
       config,
       acl: ChannelAcl::default(),
       members: HashSet::new(),
+      allowed_targets: Arc::default(),
       notifier: mng_guard.notifier.clone(),
     });
 
@@ -652,7 +653,7 @@ impl ChannelManager {
     }
 
     // Update the channel ACL.
-    channel_guard.acl = acl.clone();
+    channel_guard.set_acl(acl.clone());
     drop(channel_guard);
 
     // Send response back to the client.
@@ -761,11 +762,10 @@ impl ChannelManager {
     if !channel_guard.is_owner(&zid) {
       return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
-
     // Merge the current configuration with the new one.
-    channel_guard.config = channel_guard.config.merge(&config);
+    let new_config = channel_guard.merge_config(&config);
 
-    let new_config = &channel_guard.config;
+    drop(channel_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelConfiguration(ChannelConfigurationParameters {
@@ -827,11 +827,15 @@ impl ChannelManager {
     if !acl.is_publish_allowed(&zid) {
       return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
+    let max_payload_size = channel_guard.config.max_payload_size;
+
+    let allowed_targets = channel_guard.allowed_targets.clone();
+    drop(channel_guard);
 
     // Validate channel established payload size limit.
     let payload_length = payload.as_slice().len() as u32;
 
-    if payload_length > channel_guard.config.max_payload_size {
+    if payload_length > max_payload_size {
       return Err(
         zyn_protocol::Error::new(PolicyViolation)
           .with_id(correlation_id)
@@ -845,16 +849,14 @@ impl ChannelManager {
       transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
     }
 
-    // Broadcast the payload to all members of the channel, except
+    // Broadcast the payload to all members of the channel, except the sender.
     let msg = Message::Message(MessageParameters {
       from: (&zid).into(),
       channel: (&channel_id).into(),
       length: payload_length,
     });
 
-    let targets = channel_guard.members.iter().filter(|m| acl.is_read_allowed(m));
-
-    router.route_to_many(msg, Some(payload), targets, Some(transmitter.resource())).await?;
+    router.route_to_many(msg, Some(payload), allowed_targets.iter(), Some(transmitter.resource())).await?;
 
     if qos == QoS::AckOnRouted {
       transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
@@ -1039,6 +1041,9 @@ pub struct ChannelInner {
   /// The members of the channel (including the owner).
   members: HashSet<Zid>,
 
+  /// The channel allowed targets for broadcasting.
+  allowed_targets: Arc<[Zid]>,
+
   /// The notifier for sending events to channel members.
   notifier: Notifier,
 }
@@ -1086,6 +1091,7 @@ impl ChannelInner {
       self.owner = Some(zid.clone());
     }
     self.members.insert(zid);
+    self.update_allowed_targets();
   }
 
   /// Removes a member from the channel.
@@ -1093,7 +1099,28 @@ impl ChannelInner {
     if self.owner == Some(zid.clone()) {
       self.owner = None;
     }
-    self.members.remove(zid)
+    let removed = self.members.remove(zid);
+    self.update_allowed_targets();
+    removed
+  }
+
+  /// Sets the ACL for the channel.
+  fn set_acl(&mut self, acl: ChannelAcl) {
+    self.acl = acl;
+    self.update_allowed_targets();
+  }
+
+  /// Merges the configuration for the channel.
+  fn merge_config(&mut self, config: &ChannelConfig) -> ChannelConfig {
+    self.config = self.config.merge(config);
+    self.config.clone()
+  }
+
+  /// Updates the allowed targets for broadcasting.
+  fn update_allowed_targets(&mut self) {
+    let acl = &self.acl;
+    let targets: Vec<Zid> = self.members.iter().filter(|m| acl.is_read_allowed(m)).cloned().collect();
+    self.allowed_targets = Arc::from(targets);
   }
 
   /// Notifies all members that a new member has joined the channel.
