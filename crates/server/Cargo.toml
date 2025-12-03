@@ -14,6 +14,7 @@ anyhow = "1.0.100"
 async-trait = "0.1.88"
 console-subscriber = "0.5.0"
 clap = { version = "4", features = ["derive"] }
+dashmap = "6.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_derive = "1.0.219"
 toml = "0.9.8"
