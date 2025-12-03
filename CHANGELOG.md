@@ -5,6 +5,7 @@ All notable changes to Zyn will be documented in this file.
 ## main / unreleased
 
 * [CHANGE]: Expand correlation IDs from `u16` to `u32` across protocol. [#60](https://github.com/zyn-org/zyn/pull/60)
+* [BUGFIX]: Ensure the connection is always gracefully shut down. [#65](https://github.com/zyn-org/zyn/pull/65)
 
 ## 0.2.0 (2024-07-26)
 
