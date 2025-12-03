@@ -404,7 +404,6 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
       let tx = ConnTx { send_msg_tx, close_tx };
 
       let dispatcher_ref = dispatcher_factory.create(handler, tx.clone()).await;
-      dispatcher_ref.write().await.bootstrap().await?;
 
       conn.0 = Some(ConnInner {
         handler,
@@ -434,7 +433,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
 
     let rate_limit = config.rate_limit;
 
-    match ConnInner::<D>::run_loop::<T, ST>(
+    match ConnInner::<D>::run_connection::<T, ST>(
       stream,
       conn_ref.clone(),
       send_msg_rx,
@@ -726,6 +725,12 @@ impl<D: Dispatcher> ConnInner<D> {
     scheduled_task_guard.take().unwrap().abort();
   }
 
+  /// Bootstraps the connection.
+  async fn bootstrap(&mut self) -> anyhow::Result<()> {
+    self.dispatcher_ref.write().await.bootstrap().await?;
+    Ok(())
+  }
+
   /// Shuts down the connection.
   async fn shutdown(&mut self) -> anyhow::Result<()> {
     // Cancel any pending ping or timeout task.
@@ -761,11 +766,11 @@ impl<D: Dispatcher> ConnInner<D> {
   }
 
   #[allow(clippy::too_many_arguments)]
-  async fn run_loop<T, ST>(
+  async fn run_connection<T, ST>(
     stream: T,
     conn_ref: SlabRef<Conn<D>>,
-    mut send_msg_rx: Receiver<(Message, Option<PoolBuffer>)>,
-    mut close_rx: Receiver<Message>,
+    send_msg_rx: Receiver<(Message, Option<PoolBuffer>)>,
+    close_rx: Receiver<Message>,
     shutdown_token: CancellationToken,
     message_buffer_pool: Pool,
     payload_buffer_pool: BucketedPool,
@@ -780,13 +785,81 @@ impl<D: Dispatcher> ConnInner<D> {
   {
     let handler = conn_ref.handler;
 
-    // Split the stream into read and write halves.
     let (reader, mut writer) = tokio::io::split(stream);
 
-    let read_pool_buffer = message_buffer_pool.must_acquire();
+    // Bootstrap the connection.
+    conn_ref.write().await.bootstrap().await?;
 
+    let loop_result = async {
+      Self::run_connection_loop::<_, _, ST>(
+        reader,
+        &mut writer,
+        &conn_ref,
+        handler,
+        send_msg_rx,
+        close_rx,
+        &shutdown_token,
+        message_buffer_pool.clone(),
+        payload_buffer_pool.clone(),
+        payload_read_timeout,
+        max_payload_size,
+        flush_batch_size,
+        rate_limit,
+      )
+      .await?;
+
+      Ok::<(), anyhow::Error>(())
+    }
+    .await;
+
+    // Shutdown the connection.
+    let shutdown_result = conn_ref.write().await.shutdown().await;
+
+    match writer.shutdown().await {
+      Ok(_) => {},
+      Err(e) => {
+        // Ignore expected socket disconnection errors that occur when client disconnects abruptly
+        use std::io::ErrorKind::*;
+        match e.kind() {
+          NotConnected | BrokenPipe | ConnectionAborted | ConnectionReset | UnexpectedEof => {},
+          _ => return Err(e.into()),
+        }
+      },
+    }
+
+    // Return any error from the main loop first, then any error from shutdown.
+    loop_result?;
+    shutdown_result?;
+
+    Ok(())
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  async fn run_connection_loop<T, W, ST>(
+    reader: ReadHalf<T>,
+    writer: &mut W,
+    conn_ref: &SlabRef<Conn<D>>,
+    handler: usize,
+    mut send_msg_rx: Receiver<(Message, Option<PoolBuffer>)>,
+    mut close_rx: Receiver<Message>,
+    shutdown_token: &CancellationToken,
+    message_buffer_pool: Pool,
+    payload_buffer_pool: BucketedPool,
+    payload_read_timeout: Duration,
+    max_payload_size: usize,
+    flush_batch_size: usize,
+    rate_limit: u32,
+  ) -> anyhow::Result<()>
+  where
+    T: AsyncRead + AsyncWrite + Unpin,
+    W: AsyncWrite + Unpin,
+    ST: Service,
+  {
+    // Initialize stream reader
+    let read_pool_buffer = message_buffer_pool.must_acquire();
     let mut stream_reader = StreamReader::with_pool_buffer(reader, read_pool_buffer);
 
+    // Initialize connection loop state
     let mut rate_limit_counter = 0;
     let mut rate_limit_last_check = tokio::time::Instant::now();
 
@@ -820,7 +893,7 @@ impl<D: Dispatcher> ConnInner<D> {
                   if let Some(payload_info) = msg.payload_info() {
                     if payload_info.length > max_payload_size {
                       let err_message = Message::Error(ErrorParameters{id: payload_info.id, reason: PolicyViolation.into(), detail: Some("payload too large".into())});
-                      let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                       break 'connection_loop;
                     }
                     payload_length = payload_info.length as u32;
@@ -829,7 +902,7 @@ impl<D: Dispatcher> ConnInner<D> {
                         match payload_buffer_pool.acquire(payload_info.length) {
                             Some(buffer) => buffer,
                             None => {
-                                let _ = Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, &mut writer, message_buffer_pool.clone()).await;
+                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.clone()).await?;
                                 continue 'connection_loop;
                             }
                         }
@@ -853,14 +926,14 @@ impl<D: Dispatcher> ConnInner<D> {
                                 }
                             };
 
-                            let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                            Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                             break 'connection_loop;
                           },
                         }
                       },
                       Err(_) => {
                         let err_message = Message::Error(ErrorParameters{id: None, reason: Timeout.into(), detail: Some("payload read timeout".into())});
-                        let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                        Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                         break 'connection_loop;
                       },
                     }
@@ -879,7 +952,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
                     if rate_limit_counter > rate_limit {
                       let err_message = Message::Error(ErrorParameters{id: msg.correlation_id(), reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
-                      let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                       break 'connection_loop;
                     }
                   }
@@ -896,7 +969,7 @@ impl<D: Dispatcher> ConnInner<D> {
                 Err(e) => {
                   let err_detail = format!("{}", e);
                   let err_message = Message::Error(ErrorParameters{id: None, reason: BadRequest.into(), detail: Some(StringAtom::from(err_detail))});
-                  let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                   break 'connection_loop;
                 },
               }
@@ -910,7 +983,7 @@ impl<D: Dispatcher> ConnInner<D> {
               match e {
                 StreamReaderError::MaxLineLengthExceeded => {
                   let err_message = Message::Error(ErrorParameters{ id: None, reason: PolicyViolation.into(), detail: Some("max message size exceeded".into()) });
-                  let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
                   break 'connection_loop;
                 },
                 StreamReaderError::IoError(e) => {
@@ -959,7 +1032,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
           let iovs_count = Self::prepare_iovs(flush_batch.as_ptr(), flush_batch.len(), iovs.as_mut_ptr());
 
-          Self::write_iovs(&mut iovs[..iovs_count], &mut writer).await?;
+          Self::write_iovs(&mut iovs[..iovs_count], writer).await?;
 
           flush_batch.clear();
         },
@@ -967,7 +1040,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection.
         res = close_rx.recv() => {
           let err_message = res.unwrap();
-          let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
           info!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -975,24 +1048,11 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection on shutdown.
         _ = shutdown_token.cancelled() => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
-          let _ = Self::write_message(&err_message, None, &mut writer, message_buffer_pool.clone()).await;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
           info!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
       }
-    }
-    conn_ref.write().await.shutdown().await?;
-
-    match writer.shutdown().await {
-      Ok(_) => {},
-      Err(e) => {
-        // Ignore expected socket disconnection errors that occur when client disconnects abruptly
-        use std::io::ErrorKind::*;
-        match e.kind() {
-          NotConnected | BrokenPipe | ConnectionAborted | ConnectionReset | UnexpectedEof => {},
-          _ => return Err(e.into()),
-        }
-      },
     }
 
     Ok(())
