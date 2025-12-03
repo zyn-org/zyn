@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
-use parking_lot::RwLock as PlRwLock;
+use dashmap::DashMap;
 
 use zyn_util::pool::PoolBuffer;
 use zyn_util::string_atom::StringAtom;
 
 use crate::transmitter::Transmitter;
 
-const DEFAULT_ROUTER_SHARD_COUNT: usize = 64;
+const DEFAULT_ROUTER_SHARD_COUNT: usize = 128;
 
 struct Entry {
   /// The handler ID for this connection.
@@ -30,19 +28,19 @@ impl Entry {
   }
 }
 
-type Shard = Arc<PlRwLock<HashMap<StringAtom, Vec<Entry>>>>;
-
 #[derive(Clone)]
 pub struct Router {
+  /// The local domain for this router.
   local_domain: StringAtom,
 
-  shards: Arc<[Shard]>,
+  /// The connections map.
+  connections: Arc<DashMap<StringAtom, Vec<Entry>>>,
 }
 
 // ===== impl Router =====
 
 impl Router {
-  /// Creates a new `Router` with the default number of shards.
+  /// Creates a new `Router` with the default shard count.
   ///
   /// # Arguments
   ///
@@ -50,27 +48,23 @@ impl Router {
   ///
   /// # Returns
   ///
-  /// A new `Router` instance with default shard count
+  /// A new `Router` instance with default capacity
   pub fn new(local_domain: StringAtom) -> Self {
     Self::new_with_shard_count(local_domain, DEFAULT_ROUTER_SHARD_COUNT)
   }
 
-  /// Creates a new `Router` with a specified number of shards.
+  /// Creates a new `Router` with a specified shard count.
   ///
   /// # Arguments
   ///
   /// * `local_domain` - The local domain for this router
-  /// * `num_shards` - The number of shards to use for distributing connections
+  /// * `shard_count` - The shard count for the map
   ///
   /// # Returns
   ///
-  /// A new `Router` instance with the specified shard count
-  pub fn new_with_shard_count(local_domain: StringAtom, num_shards: usize) -> Self {
-    let mut shards = Vec::with_capacity(num_shards);
-    for _ in 0..num_shards {
-      shards.push(Arc::new(PlRwLock::new(HashMap::new())));
-    }
-    Self { local_domain, shards: Arc::from(shards) }
+  /// A new `Router` instance with the specified capacity
+  pub fn new_with_shard_count(local_domain: StringAtom, shard_count: usize) -> Self {
+    Self { local_domain, connections: Arc::new(DashMap::with_shard_amount(shard_count)) }
   }
 
   /// Routes a message to a single target.
@@ -92,11 +86,8 @@ impl Router {
     target: StringAtom,
     excluding_local_handler: Option<usize>,
   ) -> anyhow::Result<()> {
-    let shard = self.get_shard(&target);
-    let shard_guard = shard.read();
-
-    if let Some(entries) = shard_guard.get(&target) {
-      for entry in entries {
+    if let Some(entries) = self.connections.get(&target) {
+      for entry in entries.iter() {
         if Some(entry.handler) == excluding_local_handler {
           continue;
         }
@@ -127,10 +118,7 @@ impl Router {
     handler: usize,
     exclusive: bool,
   ) -> bool {
-    let shard = self.get_shard(&username);
-    let mut shard_guard = shard.write();
-
-    let entry = shard_guard.entry(username).or_default();
+    let mut entry = self.connections.entry(username).or_default();
 
     if exclusive && !entry.is_empty() {
       return false;
@@ -147,15 +135,12 @@ impl Router {
   /// * `username` - The username to unregister the connection for
   /// * `handler` - The handler ID of the connection to remove
   pub fn unregister_connection(&self, username: &StringAtom, handler: usize) {
-    let shard = self.get_shard(username);
-    let mut shard_guard = shard.write();
+    self.connections.entry(username.clone()).and_modify(|entries| {
+      entries.retain(|entry| entry.handler != handler);
+    });
 
-    if let Some(txs) = shard_guard.get_mut(username) {
-      txs.retain(|entry| entry.handler != handler);
-      if txs.is_empty() {
-        shard_guard.remove(username);
-      }
-    }
+    // Remove the entry if it's empty
+    self.connections.remove_if(username, |_, entries| entries.is_empty());
   }
 
   /// Checks if there are any connections registered for a given username.
@@ -168,19 +153,17 @@ impl Router {
   ///
   /// `true` if at least one connection exists for the username, `false` otherwise
   pub fn has_connection(&self, username: &StringAtom) -> bool {
-    let shard = self.get_shard(username);
-    let shard_guard = shard.read();
-    shard_guard.get(username).is_some_and(|entries| !entries.is_empty())
+    self.connections.get(username).is_some_and(|entries| !entries.is_empty())
   }
 
-  /// Returns the total number of connections across all shards.
+  /// Returns the total number of connections.
   ///
   /// # Returns
   ///
   /// The total count of registered connections
   #[allow(clippy::len_without_is_empty)]
   pub fn len(&self) -> usize {
-    self.shards.iter().map(|shard| shard.read().values().map(|txs| txs.len()).sum::<usize>()).sum()
+    self.connections.iter().map(|entry| entry.value().len()).sum()
   }
 
   /// Returns the local domain of this router.
@@ -190,17 +173,6 @@ impl Router {
   /// A clone of the local domain `StringAtom`
   pub fn local_domain(&self) -> StringAtom {
     self.local_domain.clone()
-  }
-
-  fn shard_index(&self, username: &StringAtom) -> usize {
-    let mut hasher = DefaultHasher::new();
-    username.hash(&mut hasher);
-    (hasher.finish() as usize) % self.shards.len()
-  }
-
-  fn get_shard(&self, username: &StringAtom) -> &Arc<PlRwLock<HashMap<StringAtom, Vec<Entry>>>> {
-    let index = self.shard_index(username);
-    &self.shards[index]
   }
 }
 
