@@ -620,7 +620,7 @@ impl<D: Dispatcher> ConnInner<D> {
     let inflight_requests = self.inflight_requests.clone();
 
     let inc_res = inflight_requests.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-      if v < max_inflight_requests { Some(v + 1) } else { None }
+      if v <= max_inflight_requests { Some(v + 1) } else { None }
     });
     if inc_res.is_err() {
       return Err(

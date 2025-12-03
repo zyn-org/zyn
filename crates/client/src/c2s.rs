@@ -15,7 +15,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use zyn_common::client::{self, Handshaker, SessionInfo};
 use zyn_common::service::C2sService;
 use zyn_protocol::{
-  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, Zid, request,
+  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, QoS, Zid, request,
 };
 use zyn_util::conn::TlsDialer;
 use zyn_util::pool::{Pool, PoolBuffer};
@@ -592,6 +592,7 @@ impl C2sClient {
   /// # Arguments
   ///
   /// * `channel` - The name of the channel to broadcast to.
+  /// * `qos` - The Quality of Service level for the broadcast.
   /// * `payload` - The payload data to broadcast.
   ///
   /// # Returns
@@ -601,12 +602,14 @@ impl C2sClient {
   /// # Errors
   ///
   /// Returns an error if the broadcast operation fails.
-  pub async fn broadcast(&self, channel: StringAtom, payload: PoolBuffer) -> anyhow::Result<()> {
+  pub async fn broadcast(&self, channel: StringAtom, qos: Option<QoS>, payload: PoolBuffer) -> anyhow::Result<()> {
     use zyn_protocol::BroadcastParameters;
+
+    let protocol_qos = qos.map(|q| q.as_u8());
 
     let id = self.client.next_id().await;
     let length = payload.len() as u32;
-    let message = Message::Broadcast(BroadcastParameters { id, channel, qos: None, length });
+    let message = Message::Broadcast(BroadcastParameters { id, channel, qos: protocol_qos, length });
 
     let handle = self.client.send_message(message, Some(payload)).await?;
     let (response, _) = handle.await??;
