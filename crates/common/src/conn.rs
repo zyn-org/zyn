@@ -398,9 +398,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     {
       let mut conn = conn_ref.write().await;
 
-      // Bootstrap the dispatcher.
       let handler = conn_ref.handler;
-
       let tx = ConnTx { send_msg_tx, close_tx };
 
       let dispatcher_ref = dispatcher_factory.create(handler, tx.clone()).await;
