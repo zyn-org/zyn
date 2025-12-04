@@ -130,17 +130,36 @@ impl Router {
 
   /// Unregisters a connection for a specific username and handler.
   ///
+  /// If the connection count for the username reaches zero after unregistering,
+  /// the provided closure will be executed.
+  ///
   /// # Arguments
   ///
   /// * `username` - The username to unregister the connection for
   /// * `handler` - The handler ID of the connection to remove
-  pub fn unregister_connection(&self, username: &StringAtom, handler: usize) {
+  /// * `on_last_disconnect` - An async closure to execute when connection count reaches zero
+  ///
+  /// # Returns
+  ///
+  /// Returns the result of the closure if executed, or `Ok(())` if not executed
+  pub async fn unregister_connection<F, Fut, E>(
+    &self,
+    username: &StringAtom,
+    handler: usize,
+    on_last_disconnect: F,
+  ) -> Result<(), E>
+  where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), E>>,
+  {
     self.connections.entry(username.clone()).and_modify(|entries| {
       entries.retain(|entry| entry.handler != handler);
     });
 
     // Remove the entry if it's empty
-    self.connections.remove_if(username, |_, entries| entries.is_empty());
+    let was_removed = self.connections.remove_if(username, |_, entries| entries.is_empty());
+
+    if was_removed.is_some() { on_last_disconnect().await } else { Ok(()) }
   }
 
   /// Checks if there are any connections registered for a given username.
