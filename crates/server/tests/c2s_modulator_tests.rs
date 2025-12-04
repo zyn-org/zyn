@@ -2,6 +2,7 @@
 
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::broadcast;
 
@@ -636,6 +637,107 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
   assert_eq!(events[2].channel, Some(StringAtom::from("!1@localhost")));
   assert_eq!(events[2].zid, Some(StringAtom::from("test_user_2@localhost")));
   assert_eq!(events[2].owner, Some(false));
+
+  suite.teardown().await?;
+  s2m_ln.shutdown().await?;
+
+  Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_c2s_channel_survives_single_connection_drop() -> anyhow::Result<()> {
+  // Create a modulator that authenticates all connections as the same user
+  let modulator = TestModulator::new()
+    .with_auth_handler(|_| async { Ok(AuthResult::Success { username: StringAtom::from(TEST_USER_1) }) });
+
+  let mut s2m_ln = create_s2m_listener(default_s2m_config(SHARED_SECRET), modulator).await?;
+  s2m_ln.bootstrap().await?;
+
+  let s2m_client = S2mClient::new(S2mClientConfig {
+    address: s2m_ln.local_address().unwrap().to_string(),
+    shared_secret: SHARED_SECRET.to_string(),
+    ..Default::default()
+  })?;
+
+  let mut suite = C2sSuite::with_modulator(default_c2s_config(), Some(s2m_client.clone()), None);
+  suite.setup().await?;
+
+  // First connection for TEST_USER_1
+  let mut conn1 = suite.tls_socket_connect().await?;
+
+  conn1.write_message(Message::Connect(ConnectParameters { protocol_version: 1, heartbeat_interval: 0 })).await?;
+  let _ = conn1.read_message().await?; // CONNECT_ACK
+
+  conn1.write_message(Message::Auth(zyn_protocol::AuthParameters { token: StringAtom::from("token1") })).await?;
+
+  assert_message!(
+    conn1.read_message().await?,
+    Message::AuthAck,
+    zyn_protocol::AuthAckParameters {
+      challenge: None,
+      succeeded: Some(true),
+      zid: Some(StringAtom::from("test_user_1@localhost"))
+    }
+  );
+
+  // Second connection for the same TEST_USER_1
+  let mut conn2 = suite.tls_socket_connect().await?;
+
+  conn2.write_message(Message::Connect(ConnectParameters { protocol_version: 1, heartbeat_interval: 0 })).await?;
+  let _ = conn2.read_message().await?; // CONNECT_ACK
+
+  conn2.write_message(Message::Auth(zyn_protocol::AuthParameters { token: StringAtom::from("token2") })).await?;
+
+  assert_message!(
+    conn2.read_message().await?,
+    Message::AuthAck,
+    zyn_protocol::AuthAckParameters {
+      challenge: None,
+      succeeded: Some(true),
+      zid: Some(StringAtom::from("test_user_1@localhost"))
+    }
+  );
+
+  // First connection joins a channel
+  conn1
+    .write_message(Message::JoinChannel(zyn_protocol::JoinChannelParameters {
+      id: 1234,
+      channel: None,
+      on_behalf: None,
+    }))
+    .await?;
+  let join_ack = conn1.read_message().await?;
+  assert!(matches!(join_ack, Message::JoinChannelAck { .. }), "expected JoinChannelAck, got: {:?}", join_ack);
+
+  // Extract the channel ID from the JoinChannelAck
+  let channel_id = if let Message::JoinChannelAck(params) = join_ack {
+    params.channel
+  } else {
+    panic!("expected JoinChannelAck");
+  };
+
+  // Drop the first connection
+  drop(conn1);
+
+  // Wait for the channel to be removed from the server's state
+  tokio::time::sleep(Duration::from_secs(1)).await;
+
+  // Second connection should still be able to list channels
+  // and see that the user is still a member of the channel
+  conn2.write_message(Message::ListChannels(zyn_protocol::ListChannelsParameters { id: 5678, owner: false })).await?;
+
+  let list_response = conn2.read_message().await?;
+  assert!(
+    matches!(list_response, Message::ListChannelsAck { .. }),
+    "expected ListChannelsAck, got: {:?}",
+    list_response
+  );
+
+  // Verify the response includes the channel the user joined
+  if let Message::ListChannelsAck(params) = list_response {
+    assert_eq!(params.id, 5678);
+    assert!(params.channels.contains(&channel_id), "user should still be a member of the channel");
+  }
 
   suite.teardown().await?;
   s2m_ln.shutdown().await?;

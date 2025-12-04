@@ -8,6 +8,7 @@ All notable changes to Zyn will be documented in this file.
 * [ENHANCEMENT]: Cache allowed broadcast targets to reduce lock contention during message broadcasting. [#68](https://github.com/zyn-org/zyn/pull/68)
 * [ENHANCEMENT]: Replace manual sharding with DashMap in c2s Router. [#69](https://github.com/zyn-org/zyn/pull/69)
 * [BUGFIX]: Ensure the connection is always gracefully shut down. [#65](https://github.com/zyn-org/zyn/pull/65)
+* [BUGFIX]: Only leave channels when user's last connection closes. [#70](https://github.com/zyn-org/zyn/pull/70)
 
 ## 0.2.0 (2024-07-26)
 

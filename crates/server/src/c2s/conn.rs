@@ -1053,13 +1053,18 @@ impl zyn_common::conn::Dispatcher for C2sDispatcher {
     let inner = self.0.as_mut().unwrap();
 
     if let Some(zid) = inner.zid.take() {
-      // Leave from all channels.
-      let leave_result = inner.channel_manager.leave_all_channels(zid.clone()).await;
+      let mut channel_mng = inner.channel_manager.clone();
 
       // Unregister the username.
-      inner.c2s_router.unregister_connection(&zid.username, inner.transmitter.handler);
+      inner
+        .c2s_router
+        .unregister_connection(&zid.username, inner.transmitter.handler, || async {
+          // Leave from all channels when last connection is closed.
+          channel_mng.leave_all_channels(zid.clone()).await?;
 
-      leave_result?;
+          Ok::<(), anyhow::Error>(())
+        })
+        .await?;
     }
 
     Ok(())
