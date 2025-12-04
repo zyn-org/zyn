@@ -137,7 +137,7 @@ impl Router {
   ///
   /// * `username` - The username to unregister the connection for
   /// * `handler` - The handler ID of the connection to remove
-  /// * `on_last_disconnect` - An async closure to execute when connection count reaches zero
+  /// * `cleanup` - An async closure to execute when connection count reaches zero
   ///
   /// # Returns
   ///
@@ -146,7 +146,7 @@ impl Router {
     &self,
     username: &StringAtom,
     handler: usize,
-    on_last_disconnect: F,
+    cleanup: F,
   ) -> Result<(), E>
   where
     F: FnOnce() -> Fut,
@@ -159,7 +159,7 @@ impl Router {
     // Remove the entry if it's empty
     let was_removed = self.connections.remove_if(username, |_, entries| entries.is_empty());
 
-    if was_removed.is_some() { on_last_disconnect().await } else { Ok(()) }
+    if was_removed.is_some() { cleanup().await } else { Ok(()) }
   }
 
   /// Checks if there are any connections registered for a given username.
