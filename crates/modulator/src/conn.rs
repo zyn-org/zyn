@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::Ok;
 use tokio::sync::{Mutex, broadcast};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{error, trace, warn};
 
 use zyn_common::conn::{ConnTx, State};
 use zyn_common::service::{M2sService, S2mService};
@@ -296,7 +296,7 @@ impl M2sDispatcher {
     let ack_msg = Message::M2sModDirectAck(M2sModDirectAckParameters { id: params.id });
     self.tx.send_message(ack_msg);
 
-    info!(handler = self.handler, id = params.id, "M2sModDirect message processed successfully");
+    trace!(handler = self.handler, id = params.id, "M2sModDirect message processed successfully");
 
     Ok(())
   }
@@ -694,7 +694,7 @@ impl<M: Modulator> S2mDispatcher<M> {
     // Send the reply message.
     self.tx.send_message(reply_msg);
 
-    info!(handler = self.handler, id = id, "handled Auth message");
+    trace!(handler = self.handler, id = id, "handled Auth message");
 
     Ok(())
   }
@@ -731,7 +731,7 @@ impl<M: Modulator> S2mDispatcher<M> {
     let valid = matches!(response.result, SendPrivatePayloadResult::Valid);
     self.tx.send_message(Message::S2mModDirectAck(S2mModDirectAckParameters { id: params.id, valid }));
 
-    info!(handler = self.handler, id = params.id, "handled ModDirect message");
+    trace!(handler = self.handler, id = params.id, "handled ModDirect message");
 
     Ok(())
   }
@@ -791,7 +791,7 @@ impl<M: Modulator> S2mDispatcher<M> {
           altered_payload_length: 0,
         }));
 
-        info!(
+        trace!(
           handler = self.handler,
           id = params.id,
           valid = true,
@@ -811,7 +811,7 @@ impl<M: Modulator> S2mDispatcher<M> {
           Some(altered_payload),
         );
 
-        info!(
+        trace!(
           handler = self.handler,
           id = params.id,
           valid = true,
@@ -827,7 +827,7 @@ impl<M: Modulator> S2mDispatcher<M> {
           altered_payload_length: 0,
         }));
 
-        info!(
+        trace!(
           handler = self.handler,
           id = params.id,
           valid = false,
@@ -878,7 +878,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
     self.tx.send_message(Message::S2mForwardEventAck(S2mForwardEventAckParameters { id: params.id }));
 
-    info!(handler = self.handler, id = params.id, "handled ForwardEvent message");
+    trace!(handler = self.handler, id = params.id, "handled ForwardEvent message");
 
     Ok(())
   }

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::{error, trace};
 
 use crate::c2s::{self, Config};
 use crate::channel::{ChannelAcl, ChannelConfig, ChannelManager};
@@ -266,7 +266,7 @@ impl C2sDispatcherInner {
 
         self.transmitter.send_message(reply_msg);
 
-        info!(
+        trace!(
           handler = self.transmitter.handler,
           auth_required = self.auth_required,
           max_channels_per_client = config.limits.max_channels_per_client,
@@ -337,7 +337,7 @@ impl C2sDispatcherInner {
                 zid: Some(zid.clone().into()),
               }));
 
-              info!(handler = self.transmitter.handler, zid = zid.to_string(), "user authenticated");
+              trace!(handler = self.transmitter.handler, zid = zid.to_string(), "user authenticated");
 
               Ok(true)
             },
@@ -397,7 +397,7 @@ impl C2sDispatcherInner {
 
         self.transmitter.send_message(Message::IdentifyAck(IdentifyAckParameters { zid: StringAtom::from(zid) }));
 
-        info!(handler = self.transmitter.handler, zid = zid.to_string(), "user identified");
+        trace!(handler = self.transmitter.handler, zid = zid.to_string(), "user identified");
 
         Ok(true)
       },
@@ -536,7 +536,7 @@ impl C2sDispatcherInner {
       .broadcast_payload(altered_payload, channel_id.clone(), zid.clone(), transmitter, qos, correlation_id)
       .await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -578,7 +578,7 @@ impl C2sDispatcherInner {
     // Submit the request to get the channel ACL.
     self.channel_manager.get_channel_acl(channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -622,7 +622,7 @@ impl C2sDispatcherInner {
       .get_channel_configuration(channel_id.clone(), zid.clone(), transmitter, correlation_id)
       .await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -688,7 +688,7 @@ impl C2sDispatcherInner {
     // Submit the request to set the channel ACL.
     self.channel_manager.set_channel_acl(acl, channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -741,7 +741,7 @@ impl C2sDispatcherInner {
       .set_channel_configuration(channel_config, channel_id.clone(), zid.clone(), transmitter, correlation_id)
       .await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -806,7 +806,7 @@ impl C2sDispatcherInner {
       as_owner = true;
     }
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.unwrap().to_string(),
@@ -861,7 +861,7 @@ impl C2sDispatcherInner {
       .leave_channel(channel_id.clone(), zid.clone(), on_behalf_zid, Some(transmitter), correlation_id)
       .await?;
 
-    info!(handler = self.transmitter.handler, zid = zid.to_string(), channel = channel_id.to_string(), "left channel");
+    trace!(handler = self.transmitter.handler, zid = zid.to_string(), channel = channel_id.to_string(), "left channel");
 
     Ok(())
   }
@@ -893,7 +893,7 @@ impl C2sDispatcherInner {
     // Submit the request to list the channels.
     self.channel_manager.list_channels(zid.clone(), as_owner, transmitter, correlation_id).await?;
 
-    info!(handler = self.transmitter.handler, zid = zid.to_string(), as_owner = as_owner, "listed channels");
+    trace!(handler = self.transmitter.handler, zid = zid.to_string(), as_owner = as_owner, "listed channels");
 
     Ok(())
   }
@@ -931,7 +931,7 @@ impl C2sDispatcherInner {
     // Submit the request to list the members.
     self.channel_manager.list_members(channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
 
-    info!(
+    trace!(
       handler = self.transmitter.handler,
       zid = zid.to_string(),
       channel = channel_id.to_string(),
@@ -990,7 +990,7 @@ impl C2sDispatcherInner {
     // Send the response back to the client.
     transmitter.send_message(Message::ModDirectAck(ModDirectAckParameters { id: correlation_id }));
 
-    info!(handler = transmitter.handler, zid = zid.to_string(), "modulator payload forwarded");
+    trace!(handler = transmitter.handler, zid = zid.to_string(), "modulator payload forwarded");
 
     Ok(())
   }
