@@ -5,6 +5,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::sync::Arc;
 
+use dashmap::DashMap;
 use tokio::sync::RwLock;
 use zyn_protocol::ErrorReason::{
   BadRequest, ChannelIsFull, ChannelNotFound, Forbidden, NotAllowed, NotImplemented, PolicyViolation, UserInChannel,
@@ -31,7 +32,7 @@ struct ChannelManagerInner {
   channels: Slab<Channel>,
 
   /// The channels a user is a member of.
-  in_channels: HashMap<StringAtom, HashSet<ChannelId>>,
+  in_channels: Arc<DashMap<StringAtom, HashSet<ChannelId>>>,
 
   /// The global router.
   router: GlobalRouter,
@@ -126,7 +127,7 @@ impl ChannelManager {
       router,
       notifier,
       channels,
-      in_channels: HashMap::new(),
+      in_channels: Arc::default(),
       max_clients_per_channel,
       max_channels_per_client,
       max_payload_size,
@@ -155,29 +156,32 @@ impl ChannelManager {
     correlation_id: u32,
   ) -> anyhow::Result<()> {
     let mng_guard = self.0.read().await;
+    let channels = mng_guard.channels.clone();
+    let in_channels = mng_guard.in_channels.clone();
+    drop(mng_guard);
 
     // Gather all channels the user is a member of and sort them.
-    let mut channels: Vec<StringAtom> = Default::default();
+    let mut channel_list: Vec<StringAtom> = Default::default();
 
-    if let Some(in_channels) = mng_guard.in_channels.get(&zid.username) {
-      for channel_id in in_channels.iter() {
+    if let Some(in_channels_set) = in_channels.get(&zid.username) {
+      for channel_id in in_channels_set.iter() {
         if as_owner {
-          let channel_ref = mng_guard.channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
+          let channel_ref = channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
 
           if channel_ref.read().await.is_owner(&zid) {
-            channels.push(channel_id.into());
+            channel_list.push(channel_id.into());
           }
         } else {
-          channels.push(channel_id.into());
+          channel_list.push(channel_id.into());
         }
       }
     }
-    drop(mng_guard);
 
-    channels.sort();
+    channel_list.sort();
 
     // Send response back to the client.
-    transmitter.send_message(Message::ListChannelsAck(ListChannelsAckParameters { id: correlation_id, channels }));
+    transmitter
+      .send_message(Message::ListChannelsAck(ListChannelsAckParameters { id: correlation_id, channels: channel_list }));
 
     Ok(())
   }
@@ -350,7 +354,7 @@ impl ChannelManager {
             return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
 
-          if !mng_guard.router.c2s_router().has_connection(&oh_behalf_zid.username) {
+          if !router.c2s_router().has_connection(&oh_behalf_zid.username) {
             return Err(zyn_protocol::Error::new(UserNotRegistered).with_id(correlation_id).into());
           }
 
@@ -385,7 +389,7 @@ impl ChannelManager {
         &new_member_zid,
         Some(transmitter.resource()),
         false,
-        mng_guard.router.c2s_router().local_domain().clone(),
+        router.c2s_router().local_domain().clone(),
       )
       .await?;
 
@@ -425,10 +429,11 @@ impl ChannelManager {
     transmitter: Option<Arc<dyn Transmitter>>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
-    let mut mng_guard = self.0.write().await;
-
+    let mng_guard = self.0.read().await;
     let router = mng_guard.router.clone();
     let channels = mng_guard.channels.clone();
+    let in_channels = mng_guard.in_channels.clone();
+    drop(mng_guard);
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
@@ -469,15 +474,10 @@ impl ChannelManager {
     channel_guard.remove_member(&left_member_zid);
 
     // Update the list of channels the connection is a member of.
-    let in_channels = &mut mng_guard.in_channels;
-
-    if let Some(in_channels_set) = in_channels.get_mut(&left_member_zid.username) {
+    in_channels.remove_if_mut(&left_member_zid.username, |_, in_channels_set| {
       in_channels_set.remove(&channel_id);
-      if in_channels_set.is_empty() {
-        in_channels.remove(&left_member_zid.username);
-      }
-    }
-    drop(mng_guard);
+      in_channels_set.is_empty()
+    });
 
     // Send response back to the client if a handler is provided.
     if let Some(transmitter) = transmitter {
@@ -515,12 +515,12 @@ impl ChannelManager {
   ///
   /// A result indicating success or failure
   pub async fn leave_all_channels(&mut self, zid: Zid) -> anyhow::Result<()> {
-    let mut mng_guard = self.0.write().await;
-    let in_channels_opt = mng_guard.in_channels.remove(&zid.username);
+    let mng_guard = self.0.read().await;
+    let in_channels = mng_guard.in_channels.clone();
     drop(mng_guard);
 
-    if let Some(in_channels) = in_channels_opt {
-      for channel_id in in_channels.iter() {
+    if let Some((_, in_channels_set)) = in_channels.remove(&zid.username) {
+      for channel_id in in_channels_set.iter() {
         self.leave_channel(channel_id.clone(), zid.clone(), None, None, 0).await?;
       }
     }

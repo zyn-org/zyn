@@ -645,7 +645,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_c2s_channel_survives_single_connection_drop() -> anyhow::Result<()> {
+async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow::Result<()> {
   // Create a modulator that authenticates all connections as the same user
   let modulator = TestModulator::new()
     .with_auth_handler(|_| async { Ok(AuthResult::Success { username: StringAtom::from(TEST_USER_1) }) });
