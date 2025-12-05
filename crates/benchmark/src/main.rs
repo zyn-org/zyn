@@ -35,6 +35,10 @@ struct Cli {
   #[arg(short = 'c', long, default_value = "10")]
   consumers: usize,
 
+  /// Number of channels to create
+  #[arg(short = 'n', long, default_value = "1")]
+  channels: usize,
+
   /// Duration to run the benchmark
   #[arg(short, long, default_value = "30s", value_parser = parse_duration)]
   duration: Duration,
@@ -71,6 +75,7 @@ async fn main() -> Result<()> {
   info!("server: {}", cli.server);
   info!("producer(s): {}", cli.producers);
   info!("consumer(s): {}", cli.consumers);
+  info!("channel(s): {}", cli.channels);
   info!("duration: {:?}", cli.duration);
 
   // Run the benchmark
@@ -185,8 +190,8 @@ async fn spawn_inbound_drainers(
 /// Gracefully leaves a channel for all clients.
 ///
 /// Returns the number of clients that successfully left the channel.
-async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) -> usize {
-  info!("  - clients leaving channel...");
+async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) {
+  info!("clients leaving channel(s)...");
 
   let mut leave_tasks = Vec::new();
 
@@ -207,11 +212,9 @@ async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) ->
   }
 
   // Wait for all clients to leave
-  let leave_results = join_all(leave_tasks).await;
-  let successful_leaves = leave_results.iter().filter(|r| r.is_ok()).count();
-  info!("  - {}/{} client(s) left channel successfully", successful_leaves, clients.len());
+  let _ = join_all(leave_tasks).await;
 
-  successful_leaves
+  info!("all clients left the channel: {}", channel);
 }
 
 /// Joins clients to a channel.
@@ -225,7 +228,7 @@ async fn create_and_join_channel(
   // Create a new channel
   let channel = match clients[0].join_new_channel().await {
     Ok(ch) => {
-      info!("  - channel created: {}", ch);
+      info!("channel created: {}", ch);
       ch
     },
     Err(e) => {
@@ -248,9 +251,7 @@ async fn create_and_join_channel(
   }
 
   match clients[0].set_channel_acl(channel.clone(), Vec::default(), allow_publish, allow_read).await {
-    Ok(()) => {
-      info!("  - channel ACL set");
-    },
+    Ok(()) => {},
     Err(e) => {
       error!("failed to set channel ACL: {}", e);
       anyhow::bail!("failed to set channel ACL: {}", e);
@@ -259,8 +260,6 @@ async fn create_and_join_channel(
 
   // Remaining clients join the channel
   if clients.len() > 1 {
-    info!("  - remaining {} clients joining channel '{}'...", clients.len() - 1, channel);
-
     let mut join_tasks = Vec::new();
     for client in clients.iter().skip(1) {
       let ch = channel.clone();
@@ -279,10 +278,9 @@ async fn create_and_join_channel(
     }
 
     // Wait for all clients to join
-    let join_results = join_all(join_tasks).await;
+    let _ = join_all(join_tasks).await;
 
-    let successful_joins = join_results.iter().filter(|r| r.is_ok()).count();
-    info!("  - {}/{} clients joined channel successfully", successful_joins, clients.len() - 1);
+    info!("all clients joined the channel: {}", channel);
   }
 
   Ok(channel)
@@ -312,7 +310,7 @@ fn create_clients(config: &C2sConfig, count: usize, client_type: &str) -> (Vec<C
     }
   }
 
-  info!("  - {}/{} {} client(s) successfully created", successful, count, client_type);
+  info!("{}/{} {} client(s) successfully created", successful, count, client_type);
 
   (clients, successful, failed)
 }
@@ -323,11 +321,11 @@ fn create_clients(config: &C2sConfig, count: usize, client_type: &str) -> (Vec<C
 /// Returns the total number of messages successfully sent and a histogram of latencies.
 async fn broadcast_messages(
   clients: &[C2sClient],
-  channel: StringAtom,
+  channels: &[StringAtom],
   duration: Duration,
   max_payload_size: usize,
 ) -> (u64, hdrhistogram::Histogram<u64>) {
-  info!("  - broadcasting messages for {:?}...", duration);
+  info!("broadcasting messages across channels for {:?}...", duration);
 
   let deadline = tokio::time::Instant::now() + duration;
   let mut broadcast_tasks = Vec::new();
@@ -337,7 +335,7 @@ async fn broadcast_messages(
 
   for (client_idx, client) in clients.iter().enumerate() {
     let client = client.clone();
-    let client_channel = channel.clone();
+    let client_channels: Vec<StringAtom> = channels.to_vec();
     let end_time = deadline;
 
     let max_inflight_requests =
@@ -348,17 +346,20 @@ async fn broadcast_messages(
 
     let task = tokio::spawn(async move {
       let mut count = 0u64;
+      let mut channel_idx = 0usize;
 
       let mut task_set = JoinSet::new();
 
       for _ in 0..max_inflight_requests {
-        let task_channel = client_channel.clone();
+        let task_channel = client_channels[channel_idx % client_channels.len()].clone();
         let task_client = client.clone();
         let task_payload_pool = client_pool.clone();
 
         task_set.spawn(async move {
           broadcast_message(task_channel, task_client, task_payload_pool, max_payload_size).await
         });
+
+        channel_idx += 1;
       }
 
       while let Some(res) = task_set.join_next().await {
@@ -382,9 +383,11 @@ async fn broadcast_messages(
 
         // If we haven't reached the deadline... broadcast a new message
         if tokio::time::Instant::now() < end_time {
-          let task_channel = client_channel.clone();
+          let task_channel = client_channels[channel_idx % client_channels.len()].clone();
           let task_client = client.clone();
           let task_payload_pool = client_pool.clone();
+
+          channel_idx += 1;
 
           task_set.spawn(async move {
             broadcast_message(task_channel, task_client, task_payload_pool, max_payload_size).await
@@ -402,7 +405,7 @@ async fn broadcast_messages(
   let results = join_all(broadcast_tasks).await;
   let total_sent: u64 = results.into_iter().filter_map(|r| r.ok()).sum();
 
-  info!("  - total messages sent: {}", total_sent);
+  info!("total messages sent: {}", total_sent);
 
   let final_histogram = match Arc::try_unwrap(arc_histogram) {
     Ok(mutex) => mutex.lock().await.clone(),
@@ -510,20 +513,29 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
   // Spawn inbound message drainer tasks for all clients
   let drainer_tasks = spawn_inbound_drainers(&all_clients, &drainer_cancel_token).await;
 
-  // Create channel and have all clients join
-  let channel = create_and_join_channel(&all_clients, cli.producers, cli.consumers).await?;
+  // Create channels and have all clients join all channels
+  let mut channels = Vec::with_capacity(cli.channels);
+  for i in 0..cli.channels {
+    if cli.channels > 1 {
+      info!("creating channel {} of {}...", i + 1, cli.channels);
+    }
+    let channel = create_and_join_channel(&all_clients, cli.producers, cli.consumers).await?;
+    channels.push(channel);
+  }
 
-  // Only producers broadcast messages
+  // Only producers broadcast messages (round-robin across all channels)
   let (messages_sent, latency_histogram) =
-    broadcast_messages(&producer_clients, channel.clone(), cli.duration, cli.max_payload_size).await;
+    broadcast_messages(&producer_clients, &channels, cli.duration, cli.max_payload_size).await;
   metrics.total_messages_sent = messages_sent;
   metrics.latency_histogram = Some(latency_histogram);
 
-  // Leave gracefully
-  let _ = leave_channel_gracefully(&all_clients, channel).await;
+  // Leave all channels gracefully
+  for channel in &channels {
+    let _ = leave_channel_gracefully(&all_clients, channel.clone()).await;
+  }
 
   // Cleanup: shutdown all clients
-  info!("  - shutting down clients...");
+  info!("shutting down clients...");
 
   // Shutdown all clients
   for client in all_clients {
@@ -531,11 +543,11 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
   }
 
   // Cancel all drainer tasks to ensure they complete
-  info!("  - cancelling message drainers...");
+  info!("cancelling message drainers...");
   drainer_cancel_token.cancel();
 
   // Wait for drainer tasks to complete and collect received message counts
-  info!("  - collecting received message counts...");
+  info!("collecting received message counts...");
   let mut total_received = 0u64;
   for task in drainer_tasks {
     match tokio::time::timeout(std::time::Duration::from_secs(5), task).await {
@@ -551,7 +563,7 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
     }
   }
 
-  info!("  - total messages received: {}", total_received);
+  info!("total messages received: {}", total_received);
   metrics.total_messages_received = total_received;
 
   Ok(())
