@@ -950,6 +950,9 @@ where
     error_state: ErrorState,
     shutdown_token: CancellationToken,
   ) {
+    let cancelled = shutdown_token.cancelled();
+    tokio::pin!(cancelled);
+
     loop {
       tokio::select! {
         // Write the message to the stream.
@@ -973,7 +976,7 @@ where
         },
 
         // Shutdown token received, exit the loop.
-        _ = shutdown_token.cancelled() => {
+        _ = &mut cancelled => {
           break;
         }
       }
@@ -1008,6 +1011,9 @@ where
     ST: Service,
   {
     let mut stream_reader = StreamReader::with_pool_buffer(rh, read_buffer);
+
+    let cancelled = shutdown_token.cancelled();
+    tokio::pin!(cancelled);
 
     loop {
       tokio::select! {
@@ -1086,7 +1092,7 @@ where
         }
 
         // Shutdown token received, exit the loop.
-        _ = shutdown_token.cancelled() => {
+        _ = &mut cancelled => {
           break;
         }
       }

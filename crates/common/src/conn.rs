@@ -864,6 +864,9 @@ impl<D: Dispatcher> ConnInner<D> {
     let mut flush_batch: Vec<(PoolBuffer, Option<PoolBuffer>)> = Vec::with_capacity(flush_batch_size);
     let mut iovs = vec![IoSlice::new(&[]); flush_batch_size * 3].into_boxed_slice();
 
+    let cancelled = shutdown_token.cancelled();
+    tokio::pin!(cancelled);
+
     'connection_loop: loop {
       tokio::select! {
         // Read the next line from the stream.
@@ -1044,7 +1047,7 @@ impl<D: Dispatcher> ConnInner<D> {
         },
 
         // Close the connection on shutdown.
-        _ = shutdown_token.cancelled() => {
+        _ = &mut cancelled => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
           Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
           trace!(handler = handler, service_type = ST::NAME, "closed connection");
