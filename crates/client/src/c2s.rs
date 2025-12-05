@@ -187,7 +187,7 @@ impl std::fmt::Debug for AuthMethod {
 /// Session information returned after successful C2S handshake.
 #[derive(Clone, Debug)]
 pub struct C2sSessionExtraInfo {
-  zid: Zid,
+  pub zid: Zid,
 }
 
 /// Handshaker implementation for C2S connections.
@@ -616,7 +616,7 @@ impl C2sClient {
 
     match response {
       Message::BroadcastAck(_) => Ok(()),
-      Message::Error(err) => Err(anyhow!("failed to broadcast: {:?}", err.reason)),
+      Message::Error(err) => Err(anyhow!("failed to broadcast: reason={}, detail={:?}", err.reason, err.detail)),
       _ => Err(anyhow!("unexpected response to broadcast request")),
     }
   }

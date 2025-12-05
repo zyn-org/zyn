@@ -17,7 +17,7 @@ use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use zyn_protocol::ErrorReason::{
   BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerOverloaded, ServerShuttingDown, Timeout,
@@ -420,7 +420,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     }
 
     let conn_count = conns.len().await;
-    info!(handler = conn_ref.handler, connection_count = conn_count, service_type = ST::NAME, "connection registered");
+    trace!(handler = conn_ref.handler, connection_count = conn_count, service_type = ST::NAME, "connection registered");
 
     // Run loop until the connection is closed.
     let payload_read_timeout = config.payload_read_timeout;
@@ -455,7 +455,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     conn_ref.release().await;
 
     let conn_count = conns.len().await;
-    info!(
+    trace!(
       handler = conn_ref.handler,
       connection_count = conn_count,
       service_type = ST::NAME,
@@ -974,7 +974,7 @@ impl<D: Dispatcher> ConnInner<D> {
             },
             Ok(false) => {
               // Stream closed by the client.
-              debug!(handler = handler, service_type = ST::NAME, "connection closed by peer");
+              trace!(handler = handler, service_type = ST::NAME, "connection closed by peer");
               break 'connection_loop;
             }
             Err(e) => {
@@ -1039,7 +1039,7 @@ impl<D: Dispatcher> ConnInner<D> {
         res = close_rx.recv() => {
           let err_message = res.unwrap();
           Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
-          info!(handler = handler, service_type = ST::NAME, "closed connection");
+          trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
 
@@ -1047,7 +1047,7 @@ impl<D: Dispatcher> ConnInner<D> {
         _ = shutdown_token.cancelled() => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
           Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
-          info!(handler = handler, service_type = ST::NAME, "closed connection");
+          trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
       }

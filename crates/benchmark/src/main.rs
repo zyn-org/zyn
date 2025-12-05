@@ -209,7 +209,7 @@ async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) ->
   // Wait for all clients to leave
   let leave_results = join_all(leave_tasks).await;
   let successful_leaves = leave_results.iter().filter(|r| r.is_ok()).count();
-  info!("  - {}/{} clients left channel successfully", successful_leaves, clients.len());
+  info!("  - {}/{} client(s) left channel successfully", successful_leaves, clients.len());
 
   successful_leaves
 }
@@ -217,7 +217,11 @@ async fn leave_channel_gracefully(clients: &[C2sClient], channel: StringAtom) ->
 /// Joins clients to a channel.
 ///
 /// Returns the channel name on success.
-async fn create_and_join_channel(clients: &[C2sClient]) -> Result<StringAtom> {
+async fn create_and_join_channel(
+  clients: &[C2sClient],
+  num_producers: usize,
+  num_consumers: usize,
+) -> Result<StringAtom> {
   // Create a new channel
   let channel = match clients[0].join_new_channel().await {
     Ok(ch) => {
@@ -227,6 +231,29 @@ async fn create_and_join_channel(clients: &[C2sClient]) -> Result<StringAtom> {
     Err(e) => {
       error!("failed to create channel: {}", e);
       anyhow::bail!("failed to create channel: {}", e);
+    },
+  };
+
+  // Set channel ACL
+  let mut allow_publish: Vec<StringAtom> = Vec::with_capacity(num_producers);
+  for i in 0..num_producers {
+    let producer_zid = format!("bench_producer_{}@localhost", i);
+    allow_publish.push(producer_zid.into());
+  }
+
+  let mut allow_read: Vec<StringAtom> = Vec::with_capacity(num_consumers);
+  for i in 0..num_consumers {
+    let consumer_zid = format!("bench_consumer_{}@localhost", i);
+    allow_read.push(consumer_zid.into());
+  }
+
+  match clients[0].set_channel_acl(channel.clone(), Vec::default(), allow_publish, allow_read).await {
+    Ok(()) => {
+      info!("  - channel ACL set");
+    },
+    Err(e) => {
+      error!("failed to set channel ACL: {}", e);
+      anyhow::bail!("failed to set channel ACL: {}", e);
     },
   };
 
@@ -265,8 +292,6 @@ async fn create_and_join_channel(clients: &[C2sClient]) -> Result<StringAtom> {
 ///
 /// Returns a tuple of (clients, successful_count, failed_count).
 fn create_clients(config: &C2sConfig, count: usize, client_type: &str) -> (Vec<C2sClient>, usize, usize) {
-  info!("  - creating {} {} clients", count, client_type);
-
   let mut clients = Vec::with_capacity(count);
   let mut successful = 0;
   let mut failed = 0;
@@ -287,7 +312,7 @@ fn create_clients(config: &C2sConfig, count: usize, client_type: &str) -> (Vec<C
     }
   }
 
-  info!("  - {}/{} {} clients successfully created", successful, count, client_type);
+  info!("  - {}/{} {} client(s) successfully created", successful, count, client_type);
 
   (clients, successful, failed)
 }
@@ -346,10 +371,12 @@ async fn broadcast_messages(
             count += 1;
           },
           Ok(Err(e)) => {
-            warn!("broadcast failed (client {}): {}", client_idx, e);
+            error!("(client {}): {}", client_idx, e);
+            std::process::exit(1);
           },
           Err(e) => {
-            warn!("task failed (client {}): {}", client_idx, e);
+            error!("task failed (client {}): {}", client_idx, e);
+            std::process::exit(1);
           },
         }
 
@@ -413,7 +440,7 @@ async fn run_benchmark(cli: Cli) -> Result<BenchmarkMetrics> {
 
   let total_clients = cli.producers + cli.consumers;
   info!(
-    "connecting {} clients ({} producers, {} consumers) to {}...",
+    "connecting {} client(s) ({} producer(s), {} consumer(s)) to {}...",
     total_clients, cli.producers, cli.consumers, cli.server
   );
 
@@ -445,12 +472,12 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
   };
 
   // Create producers
-  info!("creating {} producer clients...", cli.producers);
+  info!("creating {} producer client(s)...", cli.producers);
   let (producer_clients, producer_successful, producer_failed) =
     create_clients(&client_config, cli.producers, "producer");
 
   // Create consumers
-  info!("creating {} consumer clients...", cli.consumers);
+  info!("creating {} consumer client(s)...", cli.consumers);
   let (consumer_clients, consumer_successful, consumer_failed) =
     create_clients(&client_config, cli.consumers, "consumer");
 
@@ -484,7 +511,7 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
   let drainer_tasks = spawn_inbound_drainers(&all_clients, &drainer_cancel_token).await;
 
   // Create channel and have all clients join
-  let channel = create_and_join_channel(&all_clients).await?;
+  let channel = create_and_join_channel(&all_clients, cli.producers, cli.consumers).await?;
 
   // Only producers broadcast messages
   let (messages_sent, latency_histogram) =
