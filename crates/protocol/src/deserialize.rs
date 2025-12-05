@@ -9,7 +9,6 @@ use zyn_util::string_atom::StringAtom;
 const MALFORMED_ERR_MSG: &str = "malformed message";
 
 /// The default size of the message buffer used for deserialization.
-/// This is typically used when deserializing messages before negotiating the message buffer size.
 pub const DEFAULT_MESSAGE_BUFFER_SIZE: usize = 4096;
 
 /// Represents a message parameter.

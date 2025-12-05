@@ -165,7 +165,7 @@ impl C2sListener {
       if !is_localhost {
         return Err(anyhow!("certificate and key files must be specified for non-localhost domains"));
       }
-      info!(domain = "localhost", service_type = C2sService::NAME, "using self-signed certificate");
+      warn!(domain = "localhost", service_type = C2sService::NAME, "using self-signed certificate");
 
       let (certs, key) = generate_self_signed_cert(vec![LOCALHOST_DOMAIN.to_string()])?;
 
