@@ -6,8 +6,9 @@ All notable changes to Zyn will be documented in this file.
 
 * [CHANGE]: Expand correlation IDs from `u16` to `u32` across protocol. [#60](https://github.com/zyn-org/zyn/pull/60)
 * [ENHANCEMENT]: Cache allowed broadcast targets to reduce lock contention during message broadcasting. [#68](https://github.com/zyn-org/zyn/pull/68)
-* [ENHANCEMENT]: Replace manual sharding with DashMap in c2s Router. [#69](https://github.com/zyn-org/zyn/pull/69)
+* [ENHANCEMENT]: Replace manual sharding with DashMap in c2s router. [#69](https://github.com/zyn-org/zyn/pull/69)
 * [ENHANCEMENT]: Move high-frequency operation logs from info to trace level. [#72](https://github.com/zyn-org/zyn/pull/72)
+* [ENHANCEMENT]: Pin cancellation token futures in select loops to reduce lock contention. [#75](https://github.com/zyn-org/zyn/pull/75)
 * [BUGFIX]: Ensure the connection is always gracefully shut down. [#65](https://github.com/zyn-org/zyn/pull/65)
 * [BUGFIX]: Only leave channels when user's last connection closes. [#70](https://github.com/zyn-org/zyn/pull/70)
 
