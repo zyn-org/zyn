@@ -10,6 +10,7 @@ All notable changes to Zyn will be documented in this file.
 * [ENHANCEMENT]: Move high-frequency operation logs from info to trace level. [#72](https://github.com/zyn-org/zyn/pull/72)
 * [ENHANCEMENT]: Pin cancellation token futures in select loops to reduce lock contention. [#75](https://github.com/zyn-org/zyn/pull/75)
 * [ENHANCEMENT]: Migrate buffer pool to lock-free async implementation. [#78](https://github.com/zyn-org/zyn/pull/78)
+* [ENHANCEMENT]: Improve bucketed pool acquire to wait on random bucket when exhausted. [#79](https://github.com/zyn-org/zyn/pull/79)
 * [BUGFIX]: Ensure the connection is always gracefully shut down. [#65](https://github.com/zyn-org/zyn/pull/65)
 * [BUGFIX]: Only leave channels when user's last connection closes. [#70](https://github.com/zyn-org/zyn/pull/70)
 
