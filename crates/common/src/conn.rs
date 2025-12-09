@@ -20,7 +20,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 use zyn_protocol::ErrorReason::{
-  BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerOverloaded, ServerShuttingDown, Timeout,
+  BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerShuttingDown, Timeout,
 };
 use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
 
@@ -899,15 +899,7 @@ impl<D: Dispatcher> ConnInner<D> {
                     }
                     payload_length = payload_info.length as u32;
 
-                    let mut pool_buff = {
-                        match payload_buffer_pool.acquire(payload_info.length).await {
-                            Some(buffer) => buffer,
-                            None => {
-                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.acquire().await).await?;
-                                continue 'connection_loop;
-                            }
-                        }
-                    };
+                    let mut pool_buff = payload_buffer_pool.acquire(payload_info.length).await.unwrap();
 
                     let payload = &mut pool_buff.as_mut_slice()[..payload_info.length];
 

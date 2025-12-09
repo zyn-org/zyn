@@ -7,7 +7,11 @@ use std::sync::Arc;
 
 use bytes::BytesMut;
 use crossbeam_queue::ArrayQueue;
+use rand::Rng;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
+/// Maximum number of buckets supported in a buffered pool
+const MAX_POOL_BUCKETS: usize = 64;
 
 /// A generic buffer pool that allows sharing buffers across threads.
 #[derive(Clone)]
@@ -215,27 +219,58 @@ impl BucketedPool {
       buckets.push(Pool::from_buffer(count, size, bucket_buffer));
     }
 
+    assert!(
+      buckets.len() <= MAX_POOL_BUCKETS,
+      "number of buckets ({}) exceeds MAX_POOL_BUCKETS ({})",
+      buckets.len(),
+      MAX_POOL_BUCKETS
+    );
+
     Self { buckets: Arc::from(buckets) }
   }
 
   /// Acquire a mutable buffer of at least the requested size
-  ///
-  /// Returns a buffer from the smallest bucket that can accommodate the requested size.
-  /// If no buffer is available in the appropriate bucket, it will try the next larger bucket.
-  /// Returns None if no available buffer is found in any bucket or if the requested size
-  /// is larger than the largest bucket.
+  /// Returns `None` if no bucket can satisfy the requested size.
   ///
   /// # Arguments
   ///
   /// * `size` - The minimum size of the buffer to acquire
+  ///
+  /// # Returns
+  ///
+  /// * `Some(MutablePoolBuffer)` - A buffer of at least the requested size
+  /// * `None` - If the requested size exceeds all configured bucket sizes
   pub async fn acquire(&self, size: usize) -> Option<MutablePoolBuffer> {
+    // Collect all buckets that can satisfy the request
+    let mut suitable_buckets: [Option<&Pool>; MAX_POOL_BUCKETS] = [None; MAX_POOL_BUCKETS];
+    let mut count = 0;
+
     for bucket in self.buckets.iter() {
-      if bucket.buffer_size() >= size && bucket.has_available() {
+      if bucket.buffer_size() < size {
+        continue;
+      }
+      // If the bucket has available buffers, try to acquire one and return it
+      if bucket.has_available() {
         return Some(bucket.acquire().await);
       }
-      // If the bucket could not satisfy the request, try the next larger bucket
+      // Keep track of all buckets that can satisfy the request
+      assert!(count < MAX_POOL_BUCKETS);
+
+      suitable_buckets[count] = Some(bucket);
+      count += 1;
     }
-    None
+
+    if count == 0 {
+      return None;
+    }
+
+    // If none of the buckets that could satisfy the request have available buffers,
+    // pick one at random and wait until one of the buffers currently in use is returned
+    // to the pool
+    let idx = rand::rng().random_range(0..count);
+    let bucket = suitable_buckets[idx].unwrap();
+
+    Some(bucket.acquire().await)
   }
 
   /// Get the total number of buffers currently in use across all buckets
