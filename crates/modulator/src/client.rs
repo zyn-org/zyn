@@ -40,7 +40,7 @@ impl zyn_common::client::Handshaker<Stream> for M2sHandshaker {
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, M2sSessionExtraInfo)> {
     let pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
-    let message_buff = pool.must_acquire();
+    let message_buff = pool.acquire().await;
 
     let connect_msg = Message::M2sConnect(M2sConnectParameters {
       protocol_version: 1,
@@ -217,7 +217,7 @@ impl zyn_common::client::Handshaker<Stream> for S2mHandshaker {
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, S2mSessionExtraInfo)> {
     let pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
-    let message_buff = pool.must_acquire();
+    let message_buff = pool.acquire().await;
 
     let connect_msg = Message::S2mConnect(S2mConnectParameters {
       protocol_version: 1,

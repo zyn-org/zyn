@@ -829,7 +829,7 @@ where
       self.conn_id,
       wh,
       writer_rx,
-      message_pool.must_acquire(),
+      payload_pool.acquire().await,
       self.error_state.clone(),
       shutdown_token.clone(),
     ));
@@ -839,7 +839,7 @@ where
       self.client_id.clone(),
       self.conn_id,
       rh,
-      message_pool.must_acquire(),
+      message_pool.acquire().await,
       payload_pool,
       self.pending_requests.clone(),
       self.error_state.clone(),
@@ -1029,7 +1029,7 @@ where
               match deserialize(Cursor::new(line_bytes)) {
                 Ok(msg) => {
                     // Read optional payload.
-                    let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.clone(), payload_read_timeout).await {
+                    let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.acquire().await, payload_read_timeout).await {
                         Ok(payload_opt) => Ok((msg.clone(), payload_opt)),
                         Err(e) => Err(anyhow!(e)),
                     };
@@ -1102,18 +1102,11 @@ where
   async fn read_message_payload(
     msg: &Message,
     stream_reader: &mut StreamReader<ReadHalf<S>>,
-    payload_buffer_pool: Pool,
+    mut pool_buff: MutablePoolBuffer,
     payload_read_timeout: Duration,
   ) -> anyhow::Result<Option<PoolBuffer>> {
     match msg.payload_info() {
       Some(payload_info) => {
-        let mut pool_buff = {
-          match payload_buffer_pool.acquire() {
-            Some(buffer) => buffer,
-            None => return Err(anyhow!("failed to acquire payload buffer")),
-          }
-        };
-
         let payload = &mut pool_buff.as_mut_slice()[..payload_info.length];
 
         match tokio::time::timeout(payload_read_timeout, Self::read_payload(payload, stream_reader)).await {

@@ -17,7 +17,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use zyn_protocol::{Message, deserialize, serialize};
-use zyn_util::codec::StreamReader;
+use zyn_util::{codec::StreamReader, pool::MutablePoolBuffer};
 
 /// A testing macro for asserting that a message matches an expected type and parameters.
 ///
@@ -78,18 +78,16 @@ impl<T: AsyncRead + AsyncWrite> TestConn<T> {
   /// # Arguments
   ///
   /// * `stream` - An async stream that implements both `AsyncRead` and `AsyncWrite`
+  /// * `read_buffer` - Buffer for reading messages.
   /// * `max_message_size` - Maximum size in bytes for messages that can be sent/received
   ///
   /// # Returns
   ///
   /// A new `TestConn` instance ready for message communication.
-  pub fn new(stream: T, max_message_size: usize) -> Self {
+  pub fn new(stream: T, read_buffer: MutablePoolBuffer, max_message_size: usize) -> Self {
     let (rh, wh) = tokio::io::split(stream);
     let write_buffer = vec![0u8; max_message_size];
 
-    let pool = zyn_util::pool::Pool::new(1, max_message_size);
-
-    let read_buffer = pool.must_acquire();
     let stream_reader = StreamReader::with_pool_buffer(rh, read_buffer);
 
     Self { writer: wh, reader: stream_reader, write_buffer }

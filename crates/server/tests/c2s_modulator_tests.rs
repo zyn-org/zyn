@@ -296,7 +296,7 @@ async fn test_c2s_modulator_receive_private_payload() -> anyhow::Result<()> {
 
       // Create pool buffer with the message content
       let pool = Pool::new(1, TEST_PRIVATE_PAYLOAD.len());
-      let mut mut_buffer = pool.must_acquire();
+      let mut mut_buffer = pool.acquire().await;
 
       mut_buffer.as_mut_slice()[..priv_payload_bytes.len()].copy_from_slice(priv_payload_bytes);
       let payload_buffer = mut_buffer.freeze(priv_payload_bytes.len());
@@ -450,7 +450,7 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
 
       // Create a new pool buffer with the reversed text
       let pool = zyn_util::pool::Pool::new(1, 1024);
-      let mut mut_pool_buffer = pool.must_acquire();
+      let mut mut_pool_buffer = pool.acquire().await;
 
       let mut_buff_ptr = mut_pool_buffer.as_mut_slice();
       let n: usize = {
