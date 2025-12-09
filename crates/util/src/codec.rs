@@ -263,7 +263,7 @@ mod tests {
   async fn test_empty_lines() {
     let mock_reader = MockChunkedReader::new(vec![b"\n\n".to_vec(), b"non-empty line\n".to_vec(), b"\n".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -290,7 +290,7 @@ mod tests {
   async fn test_max_line_length() {
     // Create a small buffer of 10 bytes
     let pool = Pool::new(1, 10);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     // Create a reader with a line longer than the buffer
     let mock_reader = MockChunkedReader::new(vec![b"This line is definitely longer than 10 bytes\n".to_vec()]);
@@ -314,7 +314,7 @@ mod tests {
     ]);
 
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -337,7 +337,7 @@ mod tests {
       b"\nSecond line\n".to_vec(),
     ]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let reader = mock_reader;
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(reader, pool_buffer);
@@ -355,7 +355,7 @@ mod tests {
     // Create a buffer and a line of exactly the same size
     let buffer_size = 10;
     let pool = Pool::new(1, buffer_size);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     // Exactly 10 bytes
     let mock_reader = MockChunkedReader::new(vec![b"123456789".to_vec(), b"\n".to_vec()]);
@@ -372,7 +372,7 @@ mod tests {
     // Create a reader that will read multiple lines in one go
     let mock_reader = MockChunkedReader::new(vec![b"first line\nsecond line\nthird line\npartial".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -399,7 +399,7 @@ mod tests {
     // Create a reader with exactly one line
     let mock_reader = MockChunkedReader::new(vec![b"single line\n".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -424,7 +424,7 @@ mod tests {
     // Create a reader with partial data (no newline yet)
     let mock_reader = MockChunkedReader::new(vec![b"partial data without newline".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -444,7 +444,7 @@ mod tests {
     // Test the max_bytes parameter
     let mock_reader = MockChunkedReader::new(vec![b"first line\nsecond line\nthird line\nfourth line\n".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 
@@ -474,7 +474,7 @@ mod tests {
     // Test when max_bytes is larger than available data
     let mock_reader = MockChunkedReader::new(vec![b"first line\nshort".to_vec()]);
     let pool = Pool::new(1, 1024);
-    let pool_buffer = pool.must_acquire();
+    let pool_buffer = pool.acquire().await;
 
     let mut reader = StreamReader::<MockChunkedReader>::with_pool_buffer(mock_reader, pool_buffer);
 

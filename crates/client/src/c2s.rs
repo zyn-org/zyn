@@ -221,7 +221,7 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
 
   async fn handshake(&self, stream: &mut TlsStream<TcpStream>) -> anyhow::Result<(SessionInfo, C2sSessionExtraInfo)> {
     let mut pool = Pool::new(1, DEFAULT_MESSAGE_BUFFER_SIZE);
-    let mut message_buff = pool.must_acquire();
+    let mut message_buff = pool.acquire().await;
 
     let connect_msg = Message::Connect(ConnectParameters {
       protocol_version: 1,
@@ -250,7 +250,7 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
     };
 
     pool = Pool::new(1, session_info.max_message_size as usize);
-    message_buff = pool.must_acquire();
+    message_buff = pool.acquire().await;
 
     let zid: Zid;
 
@@ -283,7 +283,7 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
             } else if let Some(challenge) = params.challenge {
               // Continue with challenge-response
               token = authenticator.next(challenge.to_string()).await?;
-              message_buff = pool.must_acquire();
+              message_buff = pool.acquire().await;
             } else {
               // Authentication failed
               return Err(anyhow!("authentication failed"));

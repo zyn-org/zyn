@@ -167,7 +167,9 @@ impl C2sSuite {
 
     let max_message_size = self.config().limits.max_message_size as usize;
 
-    let tls_socket = TestConn::new(tls_stream, max_message_size);
+    let pool = zyn_util::pool::Pool::new(1, max_message_size);
+
+    let tls_socket = TestConn::new(tls_stream, pool.acquire().await, max_message_size);
 
     Ok(tls_socket)
   }

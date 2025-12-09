@@ -25,26 +25,6 @@ use crate::{Message, deserialize, serialize};
 /// # Returns
 /// * `Ok(Message)` - The deserialized response message
 /// * `Err(_)` - Serialization, IO, or deserialization error
-///
-/// # Example
-/// ```no_run
-/// use zyn_protocol::{Message, ConnectParameters, request};
-/// use zyn_util::pool::Pool;
-/// use tokio::net::TcpStream;
-///
-/// # async fn example(stream: &mut TcpStream) -> anyhow::Result<()> {
-/// let pool = Pool::new(1, 4096);
-/// let buffer = pool.must_acquire();
-///
-/// let connect_msg = Message::Connect(ConnectParameters {
-///   protocol_version: 1,
-///   heartbeat_interval: 30000,
-/// });
-///
-/// let response = request(connect_msg, stream, buffer).await?;
-/// # Ok(())
-/// # }
-/// ```
 pub async fn request<S>(message: Message, stream: &mut S, mut pool_buffer: MutablePoolBuffer) -> anyhow::Result<Message>
 where
   S: AsyncRead + AsyncWrite + Unpin,

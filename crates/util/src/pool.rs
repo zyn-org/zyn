@@ -1,37 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use bytes::BytesMut;
-use parking_lot::{Condvar as PlCondvar, Mutex as PlMutex};
-
-/// Internal state of the buffer pool
-#[derive(Debug)]
-struct PoolState {
-  /// Queue of available buffers.
-  available: VecDeque<BytesMut>,
-
-  /// Currently in-use count.
-  in_use_count: usize,
-
-  /// Size of each buffer.
-  buffer_size: usize,
-}
+use crossbeam_queue::ArrayQueue;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 /// A generic buffer pool that allows sharing buffers across threads.
 #[derive(Clone)]
-pub struct Pool {
-  inner: Arc<PoolInner>,
-}
+pub struct Pool(Arc<PoolInner>);
 
 /// The inner state of a pool.
 struct PoolInner {
-  state: PlMutex<PoolState>,
-  cvar: PlCondvar,
+  /// Queue of available buffers.
+  available: ArrayQueue<BytesMut>,
+
+  /// Semaphore for limiting the number of in-use buffers.
+  sem: Arc<Semaphore>,
+
+  /// Size of each buffer.
+  buffer_size: usize,
 }
 
 // ==== impl Pool =====
@@ -46,62 +37,43 @@ impl Pool {
   fn from_buffer(count: usize, buffer_size: usize, mut buffer: BytesMut) -> Self {
     assert!(buffer_size * count <= buffer.len(), "buffer size is too small");
 
-    let mut available = VecDeque::with_capacity(count);
+    let available = ArrayQueue::new(count);
     for _ in 0..count {
-      available.push_back(buffer.split_to(buffer_size));
+      available.force_push(buffer.split_to(buffer_size));
     }
+    let sem = Semaphore::new(count);
 
-    let state = PoolState { available, in_use_count: 0, buffer_size };
-    let inner = Arc::new(PoolInner { state: PlMutex::new(state), cvar: PlCondvar::new() });
+    let inner = PoolInner { available, sem: Arc::new(sem), buffer_size };
 
-    Pool { inner }
+    Self(Arc::new(inner))
   }
 
   /// Get a mutable buffer from the pool.
-  /// Returns None if no buffers are available in the pool.
-  pub fn acquire(&self) -> Option<MutablePoolBuffer> {
-    let mut state = self.inner.state.lock();
-    if let Some(buffer) = state.available.pop_back() {
-      state.in_use_count += 1;
-      return Some(MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.inner.clone()) }));
-    }
-    None
-  }
+  pub async fn acquire(&self) -> MutablePoolBuffer {
+    let permit = self.0.sem.clone().acquire_owned().await.unwrap();
+    let buffer = self.0.available.pop().unwrap();
 
-  /// Get a buffer from the pool, blocking the current thread until one becomes available.
-  pub fn acquire_blocking(&self) -> MutablePoolBuffer {
-    let mut state = self.inner.state.lock();
-    loop {
-      if let Some(buffer) = state.available.pop_back() {
-        state.in_use_count += 1;
-        return MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.inner.clone()) });
-      }
-      self.inner.cvar.wait(&mut state);
-    }
-  }
-
-  /// Get a mutable buffer from the pool, panicking if none is available.
-  ///
-  /// # Panics
-  ///
-  /// Panics if no buffers are available in the pool.
-  pub fn must_acquire(&self) -> MutablePoolBuffer {
-    self.acquire().expect("no available buffer in pool")
+    MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.0.clone()), permit: Some(permit) })
   }
 
   /// Get the number of buffers currently in use.
   pub fn in_use_count(&self) -> usize {
-    self.inner.state.lock().in_use_count
+    self.0.available.capacity() - self.0.available.len()
   }
 
   /// Get the number of available buffers.
   pub fn available_count(&self) -> usize {
-    self.inner.state.lock().available.len()
+    self.0.available.len()
+  }
+
+  /// Check if there are any available buffers.
+  pub fn has_available(&self) -> bool {
+    self.available_count() > 0
   }
 
   /// Get the size of the buffers in the pool.
   pub fn buffer_size(&self) -> usize {
-    self.inner.state.lock().buffer_size
+    self.0.buffer_size
   }
 }
 
@@ -256,15 +228,12 @@ impl BucketedPool {
   /// # Arguments
   ///
   /// * `size` - The minimum size of the buffer to acquire
-  pub fn acquire(&self, size: usize) -> Option<MutablePoolBuffer> {
+  pub async fn acquire(&self, size: usize) -> Option<MutablePoolBuffer> {
     for bucket in self.buckets.iter() {
-      if bucket.buffer_size() >= size {
-        // try to acquire from this bucket
-        if let Some(buffer) = bucket.acquire() {
-          return Some(buffer);
-        }
-        // if no buffer available in this bucket, continue to the next one
+      if bucket.buffer_size() >= size && bucket.has_available() {
+        return Some(bucket.acquire().await);
       }
+      // If the bucket could not satisfy the request, try the next larger bucket
     }
     None
   }
@@ -291,13 +260,15 @@ impl std::fmt::Debug for BucketedPool {
 }
 
 /// The inner state of a pool buffer.
-#[derive(Clone)]
 struct PoolBufferInner {
   /// The actual buffer data.
   data: Option<BytesMut>,
 
   /// Reference to the pool for returning the buffer.
   pool: Option<Arc<PoolInner>>,
+
+  /// Semaphore permit for the buffer.
+  permit: Option<OwnedSemaphorePermit>,
 }
 
 impl Debug for PoolBufferInner {
@@ -334,19 +305,14 @@ impl PoolBufferInner {
 impl Drop for PoolBufferInner {
   fn drop(&mut self) {
     if let (Some(buffer), Some(pool)) = (self.data.take(), self.pool.take()) {
-      let mut state = pool.state.lock();
-      state.available.push_back(buffer);
-      state.in_use_count -= 1;
-
-      // Wake one blocked waiter (if any)
-      pool.cvar.notify_one();
+      pool.available.force_push(buffer);
     }
   }
 }
 
 /// A mutable buffer from the pool.
 /// This buffer can be converted into a shared read-only buffer.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MutablePoolBuffer(PoolBufferInner);
 
 // ==== impl MutablePoolBuffer =====
@@ -372,12 +338,12 @@ impl MutablePoolBuffer {
   }
 
   /// Convert a mutable buffer into a shareable read-only buffer.
-  pub fn freeze(mut self, size: usize) -> PoolBuffer {
-    // Take ownership of the data and pool
+  pub fn freeze(&mut self, size: usize) -> PoolBuffer {
     let data = self.0.data.take();
     let pool = self.0.pool.take();
+    let permit = self.0.permit.take();
 
-    let inner = PoolBufferInner { data, pool };
+    let inner = PoolBufferInner { data, pool, permit };
 
     PoolBuffer { inner: Arc::new(inner), len: size }
   }
@@ -427,8 +393,8 @@ impl Deref for PoolBuffer {
 mod pool_tests {
   use super::*;
 
-  #[test]
-  fn test_buffer_pool() {
+  #[tokio::test]
+  async fn test_buffer_pool() {
     let pool = Pool::new(5, 1024);
 
     // Check initial state
@@ -436,8 +402,8 @@ mod pool_tests {
     assert_eq!(pool.available_count(), 5);
 
     // Get some buffers
-    let buf1 = pool.acquire().unwrap();
-    let buf2 = pool.acquire().unwrap();
+    let buf1 = pool.acquire().await;
+    let buf2 = pool.acquire().await;
 
     assert_eq!(pool.in_use_count(), 2);
     assert_eq!(pool.available_count(), 3);
@@ -451,63 +417,10 @@ mod pool_tests {
     drop(buf2);
   }
 
-  #[test]
-  fn test_must_acquire() {
-    let pool = Pool::new(2, 1024);
-
-    // Should successfully acquire when buffers are available
-    let buf1 = pool.must_acquire();
-    assert_eq!(buf1.len(), 1024);
-
-    let buf2 = pool.must_acquire();
-    assert_eq!(buf2.len(), 1024);
-
-    // Both buffers are now in use
-    assert_eq!(pool.available_count(), 0);
-
-    drop(buf1);
-    drop(buf2);
-  }
-
-  #[test]
-  #[should_panic(expected = "no available buffer in pool")]
-  fn test_must_acquire_panics() {
+  #[tokio::test]
+  async fn test_shared_buffer_conversion() {
     let pool = Pool::new(1, 1024);
-
-    // Acquire the only buffer
-    let _buf1 = pool.must_acquire();
-
-    // This should panic
-    let _buf2 = pool.must_acquire();
-  }
-
-  #[test]
-  fn test_no_available_buffer() {
-    let pool = Pool::new(2, 1024);
-
-    // Get all available buffers
-    let buf1 = pool.acquire().unwrap();
-    let buf2 = pool.acquire().unwrap();
-
-    // Try to get another buffer - should return None
-    let buf3 = pool.acquire();
-
-    assert_eq!(pool.in_use_count(), 2); // Only pool-managed buffers count
-    assert_eq!(pool.available_count(), 0);
-    assert!(buf3.is_none());
-
-    // Verify buffer sizes
-    assert_eq!(buf1.len(), 1024);
-    assert_eq!(buf2.len(), 1024);
-
-    drop(buf1);
-    drop(buf2);
-  }
-
-  #[test]
-  fn test_shared_buffer_conversion() {
-    let pool = Pool::new(1, 1024);
-    let mut buf = pool.acquire().unwrap();
+    let mut buf = pool.acquire().await;
 
     // Write some data
     buf.as_mut_slice()[0] = 42;
@@ -523,8 +436,8 @@ mod pool_tests {
     // Note: buf is moved by freeze(), so we can't access it here
   }
 
-  #[test]
-  fn test_multithreaded() {
+  #[tokio::test]
+  async fn test_multithreaded() {
     use std::sync::Arc;
     use std::thread;
 
@@ -533,8 +446,8 @@ mod pool_tests {
 
     for i in 0..10 {
       let pool_clone = pool.clone();
-      let handle = thread::spawn(move || {
-        let mut buf = pool_clone.acquire().unwrap();
+      let handle = thread::spawn(async move || {
+        let mut buf = pool_clone.acquire().await;
         buf.as_mut_slice()[0] = i as u8;
         assert_eq!(buf.as_slice()[0], i as u8);
       });
@@ -542,72 +455,12 @@ mod pool_tests {
     }
 
     for handle in handles {
-      handle.join().unwrap();
+      handle.join().unwrap().await;
     }
 
     // All buffers should be returned
     assert_eq!(pool.in_use_count(), 0);
     assert_eq!(pool.available_count(), 10);
-  }
-
-  #[test]
-  fn test_acquire_blocking() {
-    use std::sync::{Arc, Barrier};
-    use std::time::Instant;
-
-    // Create a pool with just 1 buffer
-    let pool = Pool::new(1, 1024);
-
-    // Acquire the only buffer, making the pool empty
-    let buffer = pool.acquire().unwrap();
-    assert_eq!(pool.in_use_count(), 1);
-    assert_eq!(pool.available_count(), 0);
-
-    // Use a barrier to ensure the thread has started and is ready to block
-    let barrier = Arc::new(Barrier::new(2));
-    let thread_barrier = barrier.clone();
-
-    // Spawn a thread that will try to acquire a buffer and should block
-    let pool_clone = pool.clone();
-    let handle = std::thread::spawn(move || {
-      // Signal the main thread that we're about to block
-      thread_barrier.wait();
-
-      // This call should block until a buffer becomes available
-      let start = Instant::now();
-      let blocking_buffer = pool_clone.acquire_blocking();
-      let elapsed = start.elapsed();
-      // Verify that some time elapsed (thread was blocked)
-      assert!(elapsed.as_nanos() > 0, "Thread wasn't blocked at all");
-
-      // Validate that we got a proper buffer
-      assert_eq!(blocking_buffer.len(), 1024);
-
-      // Return the blocking buffer and elapsed time
-      blocking_buffer
-    });
-
-    // Wait for the spawned thread to reach the barrier
-    barrier.wait();
-
-    // At this point, we know the thread is about to call acquire_blocking
-    // Wait a tiny bit to ensure it's blocked
-    std::thread::yield_now();
-
-    // Verify the pool state hasn't changed before returning the buffer
-    assert_eq!(pool.in_use_count(), 1);
-    assert_eq!(pool.available_count(), 0);
-
-    // Return the buffer to the pool, which should unblock the waiting thread
-    drop(buffer);
-
-    // Wait for the thread to complete
-    let thread_buffer = handle.join().unwrap();
-
-    assert_eq!(thread_buffer.len(), 1024);
-
-    assert_eq!(pool.in_use_count(), 1); // The thread's buffer is still in use
-    assert_eq!(pool.available_count(), 0);
   }
 }
 
@@ -813,35 +666,35 @@ mod bucketed_pool_tests {
     BucketedPool::new_with_memory_budget(1024, 8192, 0, 100, 2, 0.5);
   }
 
-  #[test]
-  fn test_acquire_appropriate_bucket() {
+  #[tokio::test]
+  async fn test_acquire_appropriate_bucket() {
     // Test that acquire() returns the right bucket size for different requests
     let pool = BucketedPool::new_with_memory_budget(100, 800, 100 * 1024, 100, 2, 0.5);
 
     // Request 50 bytes - should get from bucket 0 (100 bytes)
-    let buf1 = pool.acquire(50).unwrap();
+    let buf1 = pool.acquire(50).await.unwrap();
     assert_eq!(buf1.len(), 100);
 
     // Request 150 bytes - should get from bucket 1 (200 bytes)
-    let buf2 = pool.acquire(150).unwrap();
+    let buf2 = pool.acquire(150).await.unwrap();
     assert_eq!(buf2.len(), 200);
 
     // Request 350 bytes - should get from bucket 2 (400 bytes)
-    let buf3 = pool.acquire(350).unwrap();
+    let buf3 = pool.acquire(350).await.unwrap();
     assert_eq!(buf3.len(), 400);
 
     // Request 700 bytes - should get from bucket 3 (800 bytes)
-    let buf4 = pool.acquire(700).unwrap();
+    let buf4 = pool.acquire(700).await.unwrap();
     assert_eq!(buf4.len(), 800);
   }
 
-  #[test]
-  fn test_no_available_for_oversized_requests() {
+  #[tokio::test]
+  async fn test_no_available_for_oversized_requests() {
     // Test that oversized requests return None
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
 
     // Request 500 bytes - larger than max bucket (400), should return None
-    let buf = pool.acquire(500);
+    let buf = pool.acquire(500).await;
     assert!(buf.is_none());
 
     // Verify pool stats remain unchanged
@@ -849,8 +702,8 @@ mod bucketed_pool_tests {
     assert_eq!(pool.total_available_count(), initial_available);
   }
 
-  #[test]
-  fn test_bucket_reuse() {
+  #[tokio::test]
+  async fn test_bucket_reuse() {
     // Test that buffers are properly returned to their buckets
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
 
@@ -859,9 +712,9 @@ mod bucketed_pool_tests {
 
     // Acquire and release buffers
     {
-      let _buf1 = pool.acquire(50).unwrap();
-      let _buf2 = pool.acquire(150).unwrap();
-      let _buf3 = pool.acquire(350).unwrap();
+      let _buf1 = pool.acquire(50).await.unwrap();
+      let _buf2 = pool.acquire(150).await.unwrap();
+      let _buf3 = pool.acquire(350).await.unwrap();
 
       assert_eq!(pool.total_in_use_count(), 3);
       assert!(pool.total_available_count() < initial_available);
@@ -872,18 +725,18 @@ mod bucketed_pool_tests {
     assert_eq!(pool.total_in_use_count(), initial_in_use);
   }
 
-  #[test]
-  fn test_multithreaded_bucketed_pool() {
+  #[tokio::test]
+  async fn test_multithreaded_bucketed_pool() {
     // Test concurrent access to the bucketed pool
     let pool = Arc::new(BucketedPool::new_with_memory_budget(1024, 4096, 200 * 1024, 100, 2, 0.5));
     let mut handles = vec![];
 
     for i in 0..10 {
       let pool_clone = pool.clone();
-      let handle = thread::spawn(move || {
+      let handle = thread::spawn(async move || {
         // Each thread requests a different size (max 4000 to stay within 4096 limit)
         let size = 400 + i * 350;
-        let mut buf = pool_clone.acquire(size).unwrap();
+        let mut buf = pool_clone.acquire(size).await.unwrap();
 
         // Write some data
         buf.as_mut_slice()[0] = i as u8;
@@ -892,21 +745,21 @@ mod bucketed_pool_tests {
         assert_eq!(buf.as_slice()[0], i as u8);
 
         // Simulate some work
-        thread::sleep(std::time::Duration::from_millis(10));
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
       });
       handles.push(handle);
     }
 
     for handle in handles {
-      handle.join().unwrap();
+      handle.join().unwrap().await;
     }
 
     // All pool-managed buffers should be returned
     assert_eq!(pool.total_in_use_count(), 0);
   }
 
-  #[test]
-  fn test_stats_tracking() {
+  #[tokio::test]
+  async fn test_stats_tracking() {
     // Test that statistics are properly tracked across all buckets
     let pool = BucketedPool::new_with_memory_budget(100, 800, 10 * 1024, 100, 2, 0.5);
 
@@ -916,9 +769,9 @@ mod bucketed_pool_tests {
     assert!(initial_available > 0);
 
     // Acquire some buffers
-    let buf1 = pool.acquire(50).unwrap(); // From first bucket
-    let buf2 = pool.acquire(150).unwrap(); // From second bucket
-    let buf3 = pool.acquire(350).unwrap(); // From third bucket
+    let buf1 = pool.acquire(50).await.unwrap(); // From first bucket
+    let buf2 = pool.acquire(150).await.unwrap(); // From second bucket
+    let buf3 = pool.acquire(350).await.unwrap(); // From third bucket
 
     assert_eq!(pool.total_in_use_count(), 3);
     assert_eq!(pool.total_available_count(), initial_available - 3);
@@ -935,24 +788,24 @@ mod bucketed_pool_tests {
     assert_eq!(pool.total_available_count(), initial_available);
   }
 
-  #[test]
-  fn test_edge_case_exact_size_match() {
+  #[tokio::test]
+  async fn test_edge_case_exact_size_match() {
     // Create pool with enough buffers for all requests
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
 
     // Request exactly the bucket sizes
-    let buf1 = pool.acquire(100).unwrap();
+    let buf1 = pool.acquire(100).await.unwrap();
     assert_eq!(buf1.len(), 100);
 
-    let buf2 = pool.acquire(200).unwrap();
+    let buf2 = pool.acquire(200).await.unwrap();
     assert_eq!(buf2.len(), 200);
 
-    let buf3 = pool.acquire(400).unwrap();
+    let buf3 = pool.acquire(400).await.unwrap();
     assert_eq!(buf3.len(), 400);
   }
 
-  #[test]
-  fn test_large_growth_factor() {
+  #[tokio::test]
+  async fn test_large_growth_factor() {
     // Test with larger growth factor
     let pool = BucketedPool::new_with_memory_budget(100, 1600, 100 * 1024, 100, 4, 0.5);
 
@@ -967,17 +820,17 @@ mod bucketed_pool_tests {
     }
   }
 
-  #[test]
-  fn test_mixed_pool_and_none() {
+  #[tokio::test]
+  async fn test_mixed_pool_and_none() {
     // Test mix of pool allocations and None for oversized
     let pool = BucketedPool::new_with_memory_budget(100, 200, 10 * 1024, 100, 2, 0.5);
 
     let initial_available = pool.total_available_count();
 
     // Mix of pool allocations and None
-    let buf1 = pool.acquire(50).unwrap(); // Pool: bucket 0
-    let buf2 = pool.acquire(150).unwrap(); // Pool: bucket 1
-    let buf3 = pool.acquire(300); // None: too large
+    let buf1 = pool.acquire(50).await.unwrap(); // Pool: bucket 0
+    let buf2 = pool.acquire(150).await.unwrap(); // Pool: bucket 1
+    let buf3 = pool.acquire(300).await; // None: too large
 
     assert_eq!(buf1.len(), 100);
     assert_eq!(buf2.len(), 200);
@@ -1007,8 +860,8 @@ mod bucketed_pool_tests {
     assert!(debug_str.contains("total_available"));
   }
 
-  #[test]
-  fn test_clone_behavior() {
+  #[tokio::test]
+  async fn test_clone_behavior() {
     // Test that cloning works correctly
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
     let cloned_pool = pool.clone();
@@ -1018,7 +871,7 @@ mod bucketed_pool_tests {
     assert_eq!(pool.total_in_use_count(), cloned_pool.total_in_use_count());
 
     // Acquire from one pool
-    let buf = pool.acquire(50).unwrap();
+    let buf = pool.acquire(50).await.unwrap();
     assert_eq!(pool.total_in_use_count(), 1);
     // Since BucketedPool uses Arc internally, both clones share the same state
     assert_eq!(cloned_pool.total_in_use_count(), 1);
@@ -1030,8 +883,8 @@ mod bucketed_pool_tests {
     assert_eq!(cloned_pool.total_in_use_count(), 0);
   }
 
-  #[test]
-  fn test_fallback_to_next_bucket() {
+  #[tokio::test]
+  async fn test_fallback_to_next_bucket() {
     // Test that when a bucket is exhausted, we fall back to the next larger bucket
     // Create pool with small memory budget to ensure limited buffers per bucket
     let pool = BucketedPool::new_with_memory_budget(100, 400, 1000, 5, 2, 0.5);
@@ -1051,7 +904,7 @@ mod bucketed_pool_tests {
 
     // Keep acquiring until we get a 200-byte buffer (indicating 100-byte bucket is exhausted)
     loop {
-      let buf = pool.acquire(50).unwrap();
+      let buf = pool.acquire(50).await.unwrap();
       if buf.len() == 200 {
         // We've fallen back to the next bucket
         assert!(count_from_100 > 0, "should have gotten at least one buffer from 100-byte bucket");
@@ -1068,18 +921,18 @@ mod bucketed_pool_tests {
     }
 
     // Now verify that subsequent small requests also fall back
-    let buf2 = pool.acquire(50).unwrap();
+    let buf2 = pool.acquire(50).await.unwrap();
     assert_eq!(buf2.len(), 200, "should still get from 200-byte bucket");
     drop(buf2);
 
     // Acquire all remaining buffers
     let mut remaining_buffers = Vec::new();
-    while let Some(buf) = pool.acquire(50) {
+    while let Some(buf) = pool.acquire(50).await {
       remaining_buffers.push(buf);
     }
 
     // Now all buckets should be exhausted
-    let buf = pool.acquire(50);
+    let buf = pool.acquire(50).await;
     assert!(buf.is_none(), "all buckets should be exhausted");
 
     // Clean up
@@ -1087,8 +940,8 @@ mod bucketed_pool_tests {
     drop(remaining_buffers);
   }
 
-  #[test]
-  fn test_excessive_budget_all_buckets_capped() {
+  #[tokio::test]
+  async fn test_excessive_budget_all_buckets_capped() {
     // Test scenario where budget is so large that all buckets hit max_buffers cap
     // This verifies that excess budget is properly handled and doesn't cause issues
     let max_buffers = 100;
@@ -1135,13 +988,13 @@ mod bucketed_pool_tests {
     );
 
     // Verify the pool still works correctly
-    let buf1 = pool.acquire(500).unwrap();
+    let buf1 = pool.acquire(500).await.unwrap();
     assert_eq!(buf1.len(), 1024);
 
-    let buf2 = pool.acquire(3000).unwrap();
+    let buf2 = pool.acquire(3000).await.unwrap();
     assert_eq!(buf2.len(), 4096);
 
-    let buf3 = pool.acquire(10000).unwrap();
+    let buf3 = pool.acquire(10000).await.unwrap();
     assert_eq!(buf3.len(), 16384);
 
     // Track available before cleanup

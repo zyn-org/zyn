@@ -8,6 +8,7 @@ license = "AGPL-3.0-only"
 anyhow = "1.0.100"
 async-trait = "0.1.88"
 bytes = "1.10.1"
+crossbeam-queue = "0.3.1"
 tokio-rustls = "0.26.4"
 humantime = "2.3.0"
 serde = { version = "1.0", features = ["derive"] }

@@ -26,7 +26,7 @@ use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serial
 
 use zyn_util::codec::{StreamReader, StreamReaderError};
 use zyn_util::io::write_all_vectored;
-use zyn_util::pool::{BucketedPool, Pool, PoolBuffer};
+use zyn_util::pool::{BucketedPool, MutablePoolBuffer, Pool, PoolBuffer};
 use zyn_util::slab::{Slab, SlabRef};
 use zyn_util::string_atom::StringAtom;
 
@@ -854,7 +854,7 @@ impl<D: Dispatcher> ConnInner<D> {
     ST: Service,
   {
     // Initialize stream reader
-    let read_pool_buffer = message_buffer_pool.must_acquire();
+    let read_pool_buffer = message_buffer_pool.acquire().await;
     let mut stream_reader = StreamReader::with_pool_buffer(reader, read_pool_buffer);
 
     // Initialize connection loop state
@@ -894,16 +894,16 @@ impl<D: Dispatcher> ConnInner<D> {
                   if let Some(payload_info) = msg.payload_info() {
                     if payload_info.length > max_payload_size {
                       let err_message = Message::Error(ErrorParameters{id: payload_info.id, reason: PolicyViolation.into(), detail: Some("payload too large".into())});
-                      Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                       break 'connection_loop;
                     }
                     payload_length = payload_info.length as u32;
 
                     let mut pool_buff = {
-                        match payload_buffer_pool.acquire(payload_info.length) {
+                        match payload_buffer_pool.acquire(payload_info.length).await {
                             Some(buffer) => buffer,
                             None => {
-                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.clone()).await?;
+                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.acquire().await).await?;
                                 continue 'connection_loop;
                             }
                         }
@@ -927,14 +927,14 @@ impl<D: Dispatcher> ConnInner<D> {
                                 }
                             };
 
-                            Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                            Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                             break 'connection_loop;
                           },
                         }
                       },
                       Err(_) => {
                         let err_message = Message::Error(ErrorParameters{id: None, reason: Timeout.into(), detail: Some("payload read timeout".into())});
-                        Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                        Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                         break 'connection_loop;
                       },
                     }
@@ -953,7 +953,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
                     if rate_limit_counter > rate_limit {
                       let err_message = Message::Error(ErrorParameters{id: msg.correlation_id(), reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
-                      Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                       break 'connection_loop;
                     }
                   }
@@ -970,7 +970,7 @@ impl<D: Dispatcher> ConnInner<D> {
                 Err(e) => {
                   let err_detail = format!("{}", e);
                   let err_message = Message::Error(ErrorParameters{id: None, reason: BadRequest.into(), detail: Some(StringAtom::from(err_detail))});
-                  Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                   break 'connection_loop;
                 },
               }
@@ -984,7 +984,7 @@ impl<D: Dispatcher> ConnInner<D> {
               match e {
                 StreamReaderError::MaxLineLengthExceeded => {
                   let err_message = Message::Error(ErrorParameters{ id: None, reason: PolicyViolation.into(), detail: Some("max message size exceeded".into()) });
-                  Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
                   break 'connection_loop;
                 },
                 StreamReaderError::IoError(e) => {
@@ -1004,7 +1004,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
           match res {
             Some((message, payload_opt)) => {
-                let message_buff = Self::serialize_message(&message, message_buffer_pool.clone())?;
+                let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
                 flush_batch.push((message_buff, payload_opt));
             }
             None => {
@@ -1020,7 +1020,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
             match send_msg_rx.try_recv() {
               Ok((message, payload_opt)) => {
-                  let message_buff = Self::serialize_message(&message, message_buffer_pool.clone())?;
+                  let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
                   flush_batch.push((message_buff, payload_opt));
               },
               Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
@@ -1041,7 +1041,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection.
         res = close_rx.recv() => {
           let err_message = res.unwrap();
-          Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
           trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -1049,7 +1049,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection on shutdown.
         _ = &mut cancelled => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
-          Self::write_message(&err_message, None, writer, message_buffer_pool.clone()).await?;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
           trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -1063,12 +1063,12 @@ impl<D: Dispatcher> ConnInner<D> {
     message: &Message,
     payload_opt: Option<PoolBuffer>,
     writer: &mut W,
-    message_buffer_pool: Pool,
+    message_buffer: MutablePoolBuffer,
   ) -> anyhow::Result<()>
   where
     W: AsyncWrite + Unpin,
   {
-    let message_buff = Self::serialize_message(message, message_buffer_pool)?;
+    let message_buff = Self::serialize_message(message, message_buffer)?;
 
     let batch = [(message_buff, payload_opt)];
 
@@ -1119,13 +1119,12 @@ impl<D: Dispatcher> ConnInner<D> {
     Ok(())
   }
 
-  fn serialize_message(message: &Message, message_buffer_pool: Pool) -> anyhow::Result<PoolBuffer> {
-    let mut mut_write_buffer = message_buffer_pool.must_acquire();
-    let write_buffer = mut_write_buffer.as_mut_slice();
+  fn serialize_message(message: &Message, mut message_buffer: MutablePoolBuffer) -> anyhow::Result<PoolBuffer> {
+    let write_buffer = message_buffer.as_mut_slice();
 
     let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
 
-    Ok(mut_write_buffer.freeze(n))
+    Ok(message_buffer.freeze(n))
   }
 
   async fn read_payload<T>(
