@@ -75,6 +75,11 @@ impl Pool {
   pub fn buffer_size(&self) -> usize {
     self.0.buffer_size
   }
+
+  /// Get the total number of bytes capacity in the pool.
+  pub fn bytes_capacity(&self) -> usize {
+    self.0.available.capacity() * self.0.buffer_size
+  }
 }
 
 impl std::fmt::Debug for Pool {
@@ -110,7 +115,7 @@ impl BucketedPool {
     min_buffer_size: usize,
     max_buffer_size: usize,
     memory_budget: usize,
-    max_buffers: usize,
+    max_buffers_per_bucket: usize,
     growth_factor: usize,
     decay_factor: f64,
   ) -> Self {
@@ -143,7 +148,7 @@ impl BucketedPool {
 
       // Calculate how many buffers fit in this bucket's budget
       let uncapped_buffers = bucket_budget / current_buffer_size;
-      let bucket_buffers = uncapped_buffers.min(max_buffers);
+      let bucket_buffers = uncapped_buffers.min(max_buffers_per_bucket);
 
       if bucket_buffers > 0 {
         // Track unused budget due to capping
@@ -164,8 +169,12 @@ impl BucketedPool {
     // Second pass: redistribute unused budget evenly to uncapped buckets
     if total_unused_budget > 0 && !bucket_configs.is_empty() {
       // Find all buckets that haven't reached the cap
-      let uncapped_buckets: Vec<usize> =
-        bucket_configs.iter().enumerate().filter(|(_, (count, _))| *count < max_buffers).map(|(i, _)| i).collect();
+      let uncapped_buckets: Vec<usize> = bucket_configs
+        .iter()
+        .enumerate()
+        .filter(|(_, (count, _))| *count < max_buffers_per_bucket)
+        .map(|(i, _)| i)
+        .collect();
 
       if !uncapped_buckets.is_empty() {
         // Distribute unused budget evenly among uncapped buckets
@@ -175,7 +184,7 @@ impl BucketedPool {
           let (current_count, buffer_size) = bucket_configs[i];
 
           // Calculate how many additional buffers this bucket can take
-          let additional_buffers = (budget_per_bucket / buffer_size).min(max_buffers - current_count);
+          let additional_buffers = (budget_per_bucket / buffer_size).min(max_buffers_per_bucket - current_count);
 
           if additional_buffers > 0 {
             bucket_configs[i].0 += additional_buffers;
@@ -191,7 +200,7 @@ impl BucketedPool {
           }
 
           let (current_count, buffer_size) = bucket_configs[i];
-          if current_count < max_buffers && total_unused_budget >= buffer_size {
+          if current_count < max_buffers_per_bucket && total_unused_budget >= buffer_size {
             bucket_configs[i].0 += 1;
             total_unused_budget -= buffer_size;
           }
@@ -246,6 +255,11 @@ impl BucketedPool {
   /// Get the total number of available buffers across all buckets
   pub fn total_available_count(&self) -> usize {
     self.buckets.iter().map(|pool| pool.available_count()).sum()
+  }
+
+  /// Get the total number of bytes capacity across all buckets
+  pub fn total_bytes_capacity(&self) -> usize {
+    self.buckets.iter().map(|pool| pool.bytes_capacity()).sum()
   }
 }
 
