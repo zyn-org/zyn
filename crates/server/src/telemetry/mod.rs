@@ -40,11 +40,11 @@ pub struct ConsoleConfig {
   pub client_buffer_capacity: usize,
 
   /// the frequency for publishing events to clients
-  #[serde(default = "default_publish_interval")]
+  #[serde(default = "default_publish_interval", with = "humantime_serde")]
   pub publish_interval: Duration,
 
   /// the duration to retain spans
-  #[serde(default = "default_retention")]
+  #[serde(default = "default_retention", with = "humantime_serde")]
   pub retention: Duration,
 }
 

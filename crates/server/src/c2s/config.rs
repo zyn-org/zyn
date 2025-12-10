@@ -47,27 +47,27 @@ pub struct Config {
   pub listener: ListenerConfig,
 
   /// The timeout for the connection.
-  #[serde(default = "default_connect_timeout")]
+  #[serde(default = "default_connect_timeout", with = "humantime_serde")]
   pub connect_timeout: Duration,
 
   /// The timeout for the authentication in milliseconds.
-  #[serde(default = "default_authenticate_timeout")]
+  #[serde(default = "default_authenticate_timeout", with = "humantime_serde")]
   pub authenticate_timeout: Duration,
 
   /// The interval for keep alive messages.
-  #[serde(default = "default_keep_alive_interval")]
+  #[serde(default = "default_keep_alive_interval", with = "humantime_serde")]
   pub keep_alive_interval: Duration,
 
   /// The minimum interval for keep alive messages.
-  #[serde(default = "default_min_keep_alive_interval")]
+  #[serde(default = "default_min_keep_alive_interval", with = "humantime_serde")]
   pub min_keep_alive_interval: Duration,
 
   /// The timeout for the request.
-  #[serde(default = "default_request_timeout")]
+  #[serde(default = "default_request_timeout", with = "humantime_serde")]
   pub request_timeout: Duration,
 
   /// The timeout for reading a broadcast payload.
-  #[serde(default = "default_payload_read_timeout")]
+  #[serde(default = "default_payload_read_timeout", with = "humantime_serde")]
   pub payload_read_timeout: Duration,
 
   /// The C2S limits.
