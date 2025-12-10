@@ -292,23 +292,23 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
 
     let connections = Slab::with_capacity(max_connections);
 
-    // Create a message buffer pool with a size of max_connections + (max_connections * flush_batch_size),
-    // accounting for reading and multiple buffered writes per connection.
-    let message_buffer_pool =
-      Pool::new(max_connections + (max_connections * flush_batch_size), conn_cfg.max_message_size as usize);
+    // Account for the fact that each connection has two message buffers (read and write)
+    let max_message_pool_buffers = max_connections * 2 + flush_batch_size;
 
-    // Use the configured memory budget for the payload buffer pool
-    let memory_budget_bytes = conn_cfg.payload_pool_memory_budget as usize;
+    let max_payload_buffers_per_bucket = max_connections + flush_batch_size;
+
+    // Create message buffer pool
+    let message_buffer_pool = Pool::new(max_message_pool_buffers, conn_cfg.max_message_size as usize);
 
     // Create the bucketed pool with the configured memory budget.
     // The pool will distribute the budget across different size buckets.
     let payload_buffer_pool = BucketedPool::new_with_memory_budget(
-      4096,                               // min buffer size: 4KB
-      conn_cfg.max_payload_size as usize, // max buffer size
-      memory_budget_bytes,                // total memory budget
-      max_connections,                    // max buffers per bucket
-      2,                                  // 2x growth between buckets
-      1.0 / 3.0,                          // 33% decay
+      256,                                          // min buffer size: 4KB
+      conn_cfg.max_payload_size as usize,           // max buffer size
+      conn_cfg.payload_pool_memory_budget as usize, // total memory budget
+      max_payload_buffers_per_bucket,               // max buffers per bucket
+      2,                                            // 2x growth between buckets
+      1.0 / 3.0,                                    // 33% decay
     );
 
     let task_tracker = TaskTracker::new();
