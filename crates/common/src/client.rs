@@ -21,7 +21,7 @@ use tokio::task::JoinHandle;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use zyn_protocol::{Message, PongParameters, deserialize, serialize};
 use zyn_util::backoff::ExponentialBackoff;
@@ -1037,10 +1037,10 @@ where
                     if let Some(correlation_id) = msg.correlation_id() {
                         match msg {
                             Message::Ping(_) => {
-                                debug!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "received ping message");
+                                trace!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "received ping message");
 
                                 if writer_tx.send((Message::Pong(PongParameters { id: correlation_id }), None)).await.is_ok() {
-                                    debug!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "sent pong message");
+                                    trace!(client_id = client_id.as_str(), connection_id = conn_id, correlation_id, service_type = ST::NAME, "sent pong message");
                                 }
                                 continue;
                             },
