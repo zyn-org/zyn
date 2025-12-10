@@ -5,7 +5,7 @@ use std::io::{Cursor, IoSlice};
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -410,8 +410,9 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
         dispatcher_ref,
         task_tracker: TaskTracker::new(),
         cancellation_token: CancellationToken::new(),
+        activity_counter: Arc::new(AtomicU64::new(0)),
+        pong_notifier: None,
         scheduled_task: Arc::new(PlMutex::new(None)),
-        heartbeat_id: None,
         inflight_requests: Arc::new(AtomicU32::new(0)),
         tx,
       });
@@ -509,17 +510,20 @@ pub struct ConnInner<D: Dispatcher> {
   /// The transmitter channels.
   tx: ConnTx,
 
-  /// The currently assigned heartbeat ID.
-  heartbeat_id: Option<u32>,
+  // Increments on every received message
+  activity_counter: Arc<AtomicU64>,
+
+  // Channel to send PONG notifications to ping loop
+  pong_notifier: Option<tokio::sync::mpsc::Sender<u32>>,
+
+  /// Current scheduled task (ping or timeout).
+  scheduled_task: Arc<PlMutex<Option<tokio::task::JoinHandle<()>>>>,
 
   /// Track tasks associated with connection requests.
   task_tracker: TaskTracker,
 
   /// Token used to signal request cancellation.
   cancellation_token: CancellationToken,
-
-  /// Current scheduled task (ping or timeout).
-  scheduled_task: Arc<PlMutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 // ===== impl ConnInner =====
@@ -529,23 +533,11 @@ impl<D: Dispatcher> ConnInner<D> {
     let dispatcher_ref = self.dispatcher_ref.clone();
 
     match self.state {
-      State::Authenticated { heartbeat_interval } => {
-        // Cancel previous ping.
-        self.cancel_scheduled_task();
-
-        // Handle pong message.
-        if let Message::Pong(params) = &msg
-          && let Some(ping_id) = self.heartbeat_id.take()
-        {
-          if params.id == ping_id {
-            // Reschedule ping.
-            self.schedule_ping::<ST>(heartbeat_interval);
-
-            debug!(id = params.id, handler = self.handler, service_type = ST::NAME, "received pong");
-          } else {
-            let e =
-              zyn_protocol::Error { id: None, reason: BadRequest, detail: Some(StringAtom::from("wrong pong id")) };
-            Self::notify_error::<ST>(e.into(), self.tx.clone(), self.handler)?;
+      State::Authenticated { .. } => {
+        // Handle pong message
+        if let Message::Pong(params) = &msg {
+          if let Some(notifier) = &self.pong_notifier {
+            notifier.send(params.id).await?;
           }
           return Ok(());
         }
@@ -567,7 +559,8 @@ impl<D: Dispatcher> ConnInner<D> {
           Ok(())
         })?;
 
-        self.schedule_ping::<ST>(heartbeat_interval);
+        // Increment activity counter
+        self.activity_counter.fetch_add(1, Ordering::Relaxed);
       },
       _ => {
         match dispatcher_ref.write().await.dispatch_message(msg, payload, self.state).await {
@@ -590,7 +583,7 @@ impl<D: Dispatcher> ConnInner<D> {
                   );
                 },
                 State::Authenticated { heartbeat_interval } => {
-                  self.schedule_ping::<ST>(heartbeat_interval);
+                  self.run_ping_loop::<ST>(heartbeat_interval);
                 },
                 _ => {},
               }
@@ -675,52 +668,81 @@ impl<D: Dispatcher> ConnInner<D> {
     self.scheduled_task.lock().replace(timeout_task);
   }
 
-  /// Schedules a ping task.
-  fn schedule_ping<ST: Service>(&mut self, heartbeat_interval: Duration) {
+  /// Runs the ping/pong monitoring loop
+  fn run_ping_loop<ST: Service>(&mut self, heartbeat_interval: Duration) {
     let tx = self.tx.clone();
-
     let handler = self.handler;
-
-    let scheduled_task = self.scheduled_task.clone();
 
     // A 3x heartbeat interval is used for the timeout.
     let heartbeat_timeout = heartbeat_interval * 3;
 
-    // Generate a random ping ID.
-    let ping_id: u32 = random();
-    self.heartbeat_id = Some(ping_id);
+    let activity_counter = self.activity_counter.clone();
+
+    // Create PONG notification channel
+    let (pong_tx, mut pong_rx) = tokio::sync::mpsc::channel::<u32>(1);
+    self.pong_notifier = Some(pong_tx);
 
     let ping_task = tokio::spawn(async move {
-      tokio::time::sleep(heartbeat_interval).await;
+      let mut last_check_counter = activity_counter.load(Ordering::Relaxed);
 
-      tx.send_message(Message::Ping(PingParameters { id: ping_id }));
-      debug!(id = ping_id, handler, service_type = ST::NAME, "sent ping");
+      loop {
+        tokio::time::sleep(heartbeat_interval).await;
 
-      // Schedule keep-alive timeout.
-      let timeout_task = tokio::spawn(async move {
-        tokio::time::sleep(heartbeat_timeout).await;
+        let current_counter = activity_counter.load(Ordering::Relaxed);
 
-        let disconnect_msg = Message::Error(ErrorParameters {
-          id: None,
-          reason: Timeout.into(),
-          detail: Some(StringAtom::from("ping timeout")),
-        });
+        if current_counter != last_check_counter {
+          last_check_counter = current_counter;
+          continue; // Activity detected, skip ping
+        }
 
-        tx.close(disconnect_msg);
-      });
-      scheduled_task.lock().replace(timeout_task);
+        let ping_id: u32 = random();
+        tx.send_message(Message::Ping(PingParameters { id: ping_id }));
+        trace!(id = ping_id, handler, service_type = ST::NAME, "sent ping");
+
+        // Wait for PONG or timeout
+        match tokio::time::timeout(heartbeat_timeout, pong_rx.recv()).await {
+          Ok(Some(pong_id)) if pong_id == ping_id => {
+            trace!(id = ping_id, "pong received");
+
+            last_check_counter = activity_counter.load(Ordering::Relaxed);
+          },
+
+          // Wrong pong id
+          Ok(Some(_)) => {
+            tx.close(Message::Error(ErrorParameters {
+              id: None,
+              reason: BadRequest.into(),
+              detail: Some(StringAtom::from("wrong pong id")),
+            }));
+            break;
+          },
+
+          // Connection closing...
+          Ok(None) => {
+            break;
+          },
+
+          // Timeout - no PONG received
+          Err(_) => {
+            tx.close(Message::Error(ErrorParameters {
+              id: None,
+              reason: Timeout.into(),
+              detail: Some(StringAtom::from("ping timeout")),
+            }));
+            break;
+          },
+        }
+      }
     });
+
     self.scheduled_task.lock().replace(ping_task);
   }
 
   /// Cancels currently scheduled task.
   fn cancel_scheduled_task(&mut self) {
-    let mut scheduled_task_guard = self.scheduled_task.lock();
-
-    if scheduled_task_guard.is_none() {
-      return;
+    if let Some(task) = self.scheduled_task.lock().take() {
+      task.abort()
     }
-    scheduled_task_guard.take().unwrap().abort();
   }
 
   /// Bootstraps the connection.
