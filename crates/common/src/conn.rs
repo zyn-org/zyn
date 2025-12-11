@@ -292,7 +292,7 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     // Account for the fact that each connection has two message buffers (read and write)
     let max_message_pool_buffers = max_connections * 2 + MAX_IOVS;
 
-    let max_payload_buffers_per_bucket = max_connections + MAX_IOVS;
+    let max_payload_buffers_per_bucket = max_connections + (max_connections * MAX_IOVS);
 
     // Create message buffer pool
     let message_buffer_pool = Pool::new(max_message_pool_buffers, conn_cfg.max_message_size as usize);
@@ -300,12 +300,12 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     // Create the bucketed pool with the configured memory budget.
     // The pool will distribute the budget across different size buckets.
     let payload_buffer_pool = BucketedPool::new_with_memory_budget(
-      256,                                          // min buffer size: 4KB
+      256,                                          // min buffer size
       conn_cfg.max_payload_size as usize,           // max buffer size
       conn_cfg.payload_pool_memory_budget as usize, // total memory budget
       max_payload_buffers_per_bucket,               // max buffers per bucket
       2,                                            // 2x growth between buckets
-      1.0 / 3.0,                                    // 33% decay
+      0.5,                                          // 50% decay
     );
 
     let task_tracker = TaskTracker::new();

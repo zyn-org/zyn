@@ -113,16 +113,31 @@ pub struct BucketedPool {
 // ==== impl BucketedPool =====
 
 impl BucketedPool {
-  /// Create a new bucketed pool with memory budget and exponential decay distribution.
+  /// Creates a new bucketed pool with a memory budget constraint.
   ///
-  /// # Arguments
+  /// This constructor allocates multiple buffer pools (buckets) of varying sizes within
+  /// a total memory budget. It uses a top-down allocation strategy that prioritizes
+  /// larger buffers first, as they can serve as "universal donors" for smaller buffer
+  /// requests.
   ///
-  /// * `min_buffer_size` - The minimum buffer size for the smallest bucket
-  /// * `max_buffer_size` - The maximum buffer size for the largest bucket
-  /// * `memory_budget` - The total memory budget in bytes across all buckets
-  /// * `max_buffers_per_bucket` - The maximum number of buffers per bucket
-  /// * `growth_factor` - The growth factor for each bucket (e.g., 2 means each bucket has buffers 2x the size of the previous)
-  /// * `decay_factor` - The fraction of memory allocated to each bucket (e.g., 0.5 means each bucket gets 50% of remaining budget)
+  /// # Parameters
+  ///
+  /// * `min_buffer_size` - Minimum buffer size in bytes for the smallest bucket.
+  /// * `max_buffer_size` - Maximum buffer size in bytes for the largest bucket.
+  /// * `memory_budget` - Total memory budget in bytes to distribute across all buckets.
+  /// * `max_buffers_per_bucket` - Hard cap on the number of buffers per bucket.
+  /// * `growth_factor` - Multiplier for generating bucket sizes (e.g., 2 for powers of 2).
+  /// * `decay_factor` - Budget decay factor (0.0..1.0) applied when allocating from
+  ///   largest to smallest buckets. Higher values allocate more to larger buckets.
+  ///
+  /// # Allocation Strategy
+  ///
+  /// The method uses a top-down allocation approach:
+  /// 1. Generates bucket sizes from `min_buffer_size` to `max_buffer_size` using `growth_factor`
+  /// 2. Iterates from largest to smallest, allocating `remaining_budget * decay_factor` to each
+  /// 3. Applies `max_buffers_per_bucket` cap to prevent over-allocation
+  /// 4. Any budget saved by hitting the cap flows down to smaller buckets
+  /// 5. The smallest bucket receives all remaining budget
   pub fn new_with_memory_budget(
     min_buffer_size: usize,
     max_buffer_size: usize,
@@ -133,100 +148,62 @@ impl BucketedPool {
   ) -> Self {
     assert!(min_buffer_size > 0, "minimum buffer size must be greater than 0");
     assert!(max_buffer_size > 0, "maximum buffer size must be greater than 0");
-    assert!(
-      min_buffer_size <= max_buffer_size,
-      "minimum buffer size must be less than or equal to maximum buffer size"
-    );
-    assert!(growth_factor > 1, "growth factor must be greater than 1");
-    assert!(memory_budget > 0, "memory budget must be greater than 0");
-    assert!(decay_factor > 0.0 && decay_factor < 1.0, "decay factor must be between 0.0 and 1.0");
+    assert!(min_buffer_size <= max_buffer_size, "min size > max size");
+    assert!(growth_factor > 1, "growth factor must be > 1");
+    assert!(memory_budget > 0, "memory budget must be > 0");
+    assert!(decay_factor > 0.0 && decay_factor < 1.0, "decay factor must be 0.0..1.0");
 
-    // First pass: calculate initial bucket sizes and track unused budget
+    // Generate all bucket sizes first (Small -> Large)
+    // We do this first so we can iterate them in reverse later.
+    let mut sizes = Vec::new();
+    let mut current_size = min_buffer_size;
+    while current_size <= max_buffer_size {
+      sizes.push(current_size);
+      current_size *= growth_factor;
+    }
+
+    // Top-Down Allocation (Iterate Largest -> Smallest)
+    // We use reverse iterator to prioritize allocating the "Universal Donors" (large buckets).
     let mut bucket_configs = Vec::new();
-    let mut current_buffer_size = min_buffer_size;
     let mut remaining_budget = memory_budget;
-    let mut total_unused_budget = 0;
 
-    // Calculate how many buckets we need and distribute memory budget with exponential decay
-    while current_buffer_size <= max_buffer_size && remaining_budget >= current_buffer_size {
-      let bucket_budget = if bucket_configs.is_empty() {
-        ((memory_budget as f64) * decay_factor).floor() as usize
+    for (i, &size) in sizes.iter().rev().enumerate() {
+      let is_last_bucket = i == sizes.len() - 1;
+
+      // Calculate the budget target for this specific bucket tier
+      let bucket_budget_target = if is_last_bucket {
+        // The smallest bucket gets whatever budget is left (Sweep the floor)
+        remaining_budget
       } else {
-        (remaining_budget as f64 * decay_factor).floor() as usize
+        ((remaining_budget as f64) * decay_factor).floor() as usize
       };
 
-      // Ensure bucket budget is at least one buffer's worth and doesn't exceed remaining
-      let bucket_budget = bucket_budget.max(current_buffer_size).min(remaining_budget);
+      let bucket_budget_target = bucket_budget_target.min(remaining_budget);
 
-      // Calculate how many buffers fit in this bucket's budget
-      let uncapped_buffers = bucket_budget / current_buffer_size;
-      let bucket_buffers = uncapped_buffers.min(max_buffers_per_bucket);
+      // Calculate buffer count
+      let raw_count = bucket_budget_target / size;
 
-      if bucket_buffers > 0 {
-        // Track unused budget due to capping
-        let actual_used = bucket_buffers * current_buffer_size;
-        let allocated_budget = uncapped_buffers * current_buffer_size;
-        total_unused_budget += allocated_budget.saturating_sub(actual_used);
+      // Apply the hard cap (max_buffers_per_bucket)
+      let actual_count = raw_count.min(max_buffers_per_bucket);
 
-        bucket_configs.push((bucket_buffers, current_buffer_size));
-        remaining_budget -= allocated_budget.min(bucket_budget);
-      }
+      if actual_count > 0 {
+        bucket_configs.push((actual_count, size));
 
-      current_buffer_size *= growth_factor;
-    }
-
-    // Add any remaining budget to the unused pool
-    total_unused_budget += remaining_budget;
-
-    // Second pass: redistribute unused budget evenly to uncapped buckets
-    if total_unused_budget > 0 && !bucket_configs.is_empty() {
-      // Find all buckets that haven't reached the cap
-      let uncapped_buckets: Vec<usize> = bucket_configs
-        .iter()
-        .enumerate()
-        .filter(|(_, (count, _))| *count < max_buffers_per_bucket)
-        .map(|(i, _)| i)
-        .collect();
-
-      if !uncapped_buckets.is_empty() {
-        // Distribute unused budget evenly among uncapped buckets
-        let budget_per_bucket = total_unused_budget / uncapped_buckets.len();
-
-        for &i in &uncapped_buckets {
-          let (current_count, buffer_size) = bucket_configs[i];
-
-          // Calculate how many additional buffers this bucket can take
-          let additional_buffers = (budget_per_bucket / buffer_size).min(max_buffers_per_bucket - current_count);
-
-          if additional_buffers > 0 {
-            bucket_configs[i].0 += additional_buffers;
-            total_unused_budget -= additional_buffers * buffer_size;
-          }
-        }
-
-        // If there's still budget left (due to rounding), do another pass
-        // giving one more buffer to each uncapped bucket until budget is exhausted
-        for &i in &uncapped_buckets {
-          if total_unused_budget == 0 {
-            break;
-          }
-
-          let (current_count, buffer_size) = bucket_configs[i];
-          if current_count < max_buffers_per_bucket && total_unused_budget >= buffer_size {
-            bucket_configs[i].0 += 1;
-            total_unused_budget -= buffer_size;
-          }
-        }
+        // We only deduct what we *actually* spent.
+        // Any budget saved by hitting 'max_buffers_per_bucket' stays in 'remaining_budget'
+        // and is naturally available for the next (smaller) bucket in the loop.
+        remaining_budget -= actual_count * size;
       }
     }
 
-    // Only allocate what we'll actually use, not the full budget
-    let actual_memory_to_allocate =
-      bucket_configs.iter().map(|(count, size)| count * size).sum::<usize>().min(memory_budget);
+    // Sort configurations back to Ascending Order (Small -> Large)
+    bucket_configs.sort_by_key(|&(_, size)| size);
 
-    let mut master_buffer = BytesMut::zeroed(actual_memory_to_allocate);
+    // We sum up the exact requirements to ensure we allocate exactly what is needed.
+    let actual_total_memory = bucket_configs.iter().map(|(count, size)| count * size).sum::<usize>();
 
-    // Create the actual pools from the configurations
+    let mut master_buffer = BytesMut::zeroed(actual_total_memory);
+
     let mut buckets = Vec::with_capacity(bucket_configs.len());
     for (count, size) in bucket_configs {
       let bucket_total_size = count * size;
@@ -241,29 +218,29 @@ impl BucketedPool {
 
   /// Acquire a mutable buffer of at least the requested size
   ///
-  /// Returns a buffer from the smallest bucket that can accommodate the requested size,
+  /// Returns a buffer that can accommodate the requested size,
   /// or None if requested size is larger than the largest bucket.
   ///
   /// # Arguments
   ///
   /// * `size` - The minimum size of the buffer to acquire
   pub async fn acquire_buffer(&self, size: usize) -> Option<MutablePoolBuffer> {
-    let mut smallest_suitable_bucket: Option<&Pool> = None;
+    let mut largest_suitable_bucket: Option<&Pool> = None;
 
     for bucket in self.buckets.iter() {
       if bucket.buffer_size() >= size {
         if bucket.has_available() {
           return Some(bucket.acquire_buffer().await);
-        } else if smallest_suitable_bucket.is_none() {
-          // Keep a reference to the first bucket that can accommodate the requested size.
-          smallest_suitable_bucket = Some(bucket);
+        } else {
+          // Keep a reference to the largest bucket that can accommodate the requested size.
+          largest_suitable_bucket = Some(bucket);
         }
       }
     }
 
-    // If no buckets have available buffers, it will block on the smallest
-    // suitable bucket, waiting for a buffer to be returned to the pool.
-    if let Some(bucket) = smallest_suitable_bucket {
+    // If no buckets have available buffers, we'll block on the largest suitable bucket,
+    // waiting for a buffer to be returned to the pool.
+    if let Some(bucket) = largest_suitable_bucket {
       return Some(bucket.acquire_buffer().await);
     }
 
@@ -616,9 +593,10 @@ mod bucketed_pool_tests {
       0.9,         // 90% decay
     );
 
-    // First bucket should get most of the budget
-    let first_bucket_memory = pool.buckets[0].available_count() * pool.buckets[0].buffer_size();
-    assert!(first_bucket_memory >= 800 * 1024); // At least 80% of budget
+    // Largest bucket should get most of the budget (top-down allocation)
+    let last_idx = pool.buckets.len() - 1;
+    let largest_bucket_memory = pool.buckets[last_idx].available_count() * pool.buckets[last_idx].buffer_size();
+    assert!(largest_bucket_memory >= 800 * 1024); // At least 80% of budget
 
     // Test with minimal decay
     let pool = BucketedPool::new_with_memory_budget(
@@ -638,13 +616,15 @@ mod bucketed_pool_tests {
   #[test]
   fn test_budget_redistribution_when_capped() {
     // Test that unused budget from capped buckets gets redistributed
+    // With 50% decay and 256MB budget, the largest bucket (64KB) would get 128MB = ~2048 buffers
+    // By capping at 1000, we force redistribution of ~64MB to smaller buckets
     let pool = BucketedPool::new_with_memory_budget(
       4096,              // 4KB min
       65536,             // 64KB max
       256 * 1024 * 1024, // 256MB budget
-      10000,             // max 10K buffers per bucket (will cap first bucket)
+      1000,              // max 1000 buffers per bucket (will cap largest bucket)
       2,                 // 2x growth
-      1.0 / 3.0,         // 33% decay
+      0.5,               // 50%
     );
 
     // Calculate actual memory usage
@@ -658,60 +638,54 @@ mod bucketed_pool_tests {
       buffer_counts.push((size, count));
     }
 
-    // First bucket (4KB) should be capped at 10,000
-    assert_eq!(buffer_counts[0].1, 10000, "First bucket should be capped at max_buffers");
+    // Largest bucket (64KB, last in array) should be capped at 1000
+    let last_idx = buffer_counts.len() - 1;
+    assert_eq!(
+      buffer_counts[last_idx].1, 1000,
+      "Largest bucket should be capped at max_buffers. Buffer counts: {:?}",
+      buffer_counts
+    );
 
-    // Total memory should use most of the budget (at least 95%)
+    // With 1000 buffer cap per bucket, max possible is ~124MB
+    // (1000*64KB + 1000*32KB + 1000*16KB + 1000*8KB + 1000*4KB)
+    // So we expect around 45-50% of the 256MB budget to be used
     let budget = 256 * 1024 * 1024;
     assert!(
-      total_memory >= (budget * 95 / 100),
-      "Should use at least 95% of budget. Used: {}MB of {}MB",
+      total_memory >= (budget * 45 / 100),
+      "Should use at least 45% of budget. Used: {}MB of {}MB",
       total_memory / 1024 / 1024,
       budget / 1024 / 1024
     );
 
-    // Check that multiple buckets got redistribution (not just the last one)
-    // With 256MB and first bucket capped, the redistribution should spread across other buckets
-    let mut buckets_with_extra = 0;
-
-    // Expected counts without redistribution (roughly):
-    // 4KB: 10000 (capped), 8KB: ~7281, 16KB: ~2427, 32KB: ~809, 64KB: ~269
-    // With redistribution of ~79MB spread evenly, each uncapped should get more
-
-    if buffer_counts.len() > 1 && buffer_counts[1].1 > 8000 {
-      buckets_with_extra += 1; // 8KB bucket got extra
+    // Check that smaller buckets also hit the cap due to redistribution
+    // With top-down allocation and the largest bucket capped, remaining budget flows to smaller buckets
+    // All buckets should be capped at 1000 since there's plenty of budget
+    for (size, count) in &buffer_counts {
+      assert_eq!(
+        *count,
+        1000,
+        "All buckets should be capped at max_buffers with this large budget. Bucket {}KB has {} buffers. All counts: {:?}",
+        size / 1024,
+        count,
+        buffer_counts
+      );
     }
-    if buffer_counts.len() > 2 && buffer_counts[2].1 > 3000 {
-      buckets_with_extra += 1; // 16KB bucket got extra
-    }
-    if buffer_counts.len() > 3 && buffer_counts[3].1 > 1000 {
-      buckets_with_extra += 1; // 32KB bucket got extra
-    }
-    if buffer_counts.len() > 4 && buffer_counts[4].1 > 500 {
-      buckets_with_extra += 1; // 64KB bucket got extra
-    }
-
-    assert!(
-      buckets_with_extra >= 2,
-      "At least 2 buckets should have gotten redistribution. Buffer counts: {:?}",
-      buffer_counts
-    );
   }
 
   #[test]
-  #[should_panic(expected = "decay factor must be between 0.0 and 1.0")]
+  #[should_panic(expected = "decay factor must be 0.0..1.0")]
   fn test_invalid_memory_budget_decay_zero() {
     BucketedPool::new_with_memory_budget(1024, 8192, 1024 * 1024, 100, 2, 0.0);
   }
 
   #[test]
-  #[should_panic(expected = "decay factor must be between 0.0 and 1.0")]
+  #[should_panic(expected = "decay factor must be 0.0..1.0")]
   fn test_invalid_memory_budget_decay_one() {
     BucketedPool::new_with_memory_budget(1024, 8192, 1024 * 1024, 100, 2, 1.0);
   }
 
   #[test]
-  #[should_panic(expected = "memory budget must be greater than 0")]
+  #[should_panic(expected = "memory budget must be > 0")]
   fn test_invalid_zero_budget() {
     BucketedPool::new_with_memory_budget(1024, 8192, 0, 100, 2, 0.5);
   }

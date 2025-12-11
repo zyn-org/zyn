@@ -467,7 +467,7 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
     address: cli.server.to_string(),
     heartbeat_interval: Duration::from_secs(60),
     connect_timeout: Duration::from_secs(5),
-    timeout: Duration::from_secs(5),
+    timeout: Duration::from_secs(20),
     payload_read_timeout: Duration::from_secs(5),
     backoff_initial_delay: Duration::from_millis(100),
     backoff_max_delay: Duration::from_secs(30),
