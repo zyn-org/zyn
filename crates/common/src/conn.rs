@@ -34,6 +34,8 @@ use crate::service::Service;
 
 const SERVER_OVERLOADED_ERROR: &[u8] = b"ERROR reason=SERVER_OVERLOADED detail=\\\"max connections reached\\\"\n";
 
+const MAX_IOVS: usize = 128;
+
 /// Represents the current state of a client connection in the protocol flow.
 ///
 /// Client connections progress through these states in a strictly forward-only manner.
@@ -234,10 +236,6 @@ pub struct Config {
   /// The connection maximum number of inflight requests.
   pub max_inflight_requests: u32,
 
-  /// The maximum number of messages that will be batched
-  /// after serialization before flushing to the client.
-  pub flush_batch_size: u32,
-
   /// The maximum number of bytes that can be read per second.
   pub rate_limit: u32,
 }
@@ -288,14 +286,13 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
     let conn_cfg = config.into();
 
     let max_connections = conn_cfg.max_connections as usize;
-    let flush_batch_size = conn_cfg.flush_batch_size as usize;
 
     let connections = Slab::with_capacity(max_connections);
 
     // Account for the fact that each connection has two message buffers (read and write)
-    let max_message_pool_buffers = max_connections * 2 + flush_batch_size;
+    let max_message_pool_buffers = max_connections * 2 + MAX_IOVS;
 
-    let max_payload_buffers_per_bucket = max_connections + flush_batch_size;
+    let max_payload_buffers_per_bucket = max_connections + MAX_IOVS;
 
     // Create message buffer pool
     let message_buffer_pool = Pool::new(max_message_pool_buffers, conn_cfg.max_message_size as usize);
@@ -428,8 +425,6 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
 
     let max_payload_size = config.max_payload_size as usize;
 
-    let flush_batch_size = config.flush_batch_size as usize;
-
     let rate_limit = config.rate_limit;
 
     match ConnInner::<D>::run_connection::<T, ST>(
@@ -442,7 +437,6 @@ impl<D: Dispatcher, DF: DispatcherFactory<D>, ST: Service> ConnManager<D, DF, ST
       payload_buffer_pool,
       payload_read_timeout,
       max_payload_size,
-      flush_batch_size,
       rate_limit,
     )
     .await
@@ -796,7 +790,6 @@ impl<D: Dispatcher> ConnInner<D> {
     payload_buffer_pool: BucketedPool,
     payload_read_timeout: Duration,
     max_payload_size: usize,
-    flush_batch_size: usize,
     rate_limit: u32,
   ) -> anyhow::Result<()>
   where
@@ -823,7 +816,6 @@ impl<D: Dispatcher> ConnInner<D> {
         payload_buffer_pool.clone(),
         payload_read_timeout,
         max_payload_size,
-        flush_batch_size,
         rate_limit,
       )
       .await?;
@@ -867,7 +859,6 @@ impl<D: Dispatcher> ConnInner<D> {
     payload_buffer_pool: BucketedPool,
     payload_read_timeout: Duration,
     max_payload_size: usize,
-    flush_batch_size: usize,
     rate_limit: u32,
   ) -> anyhow::Result<()>
   where
@@ -883,8 +874,8 @@ impl<D: Dispatcher> ConnInner<D> {
     let mut rate_limit_counter = 0;
     let mut rate_limit_last_check = tokio::time::Instant::now();
 
-    let mut flush_batch: Vec<(PoolBuffer, Option<PoolBuffer>)> = Vec::with_capacity(flush_batch_size);
-    let mut iovs = vec![IoSlice::new(&[]); flush_batch_size * 3].into_boxed_slice();
+    let mut write_batch: Vec<(PoolBuffer, Option<PoolBuffer>)> = Vec::with_capacity(MAX_IOVS);
+    let mut iovs = vec![IoSlice::new(&[]); MAX_IOVS * 3].into_boxed_slice();
 
     let cancelled = shutdown_token.cancelled();
     tokio::pin!(cancelled);
@@ -1027,7 +1018,7 @@ impl<D: Dispatcher> ConnInner<D> {
           match res {
             Some((message, payload_opt)) => {
                 let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
-                flush_batch.push((message_buff, payload_opt));
+                write_batch.push((message_buff, payload_opt));
             }
             None => {
               error!(handler = handler, service_type = ST::NAME, MESSAGE_CHANNEL_CLOSED_LOG);
@@ -1036,14 +1027,14 @@ impl<D: Dispatcher> ConnInner<D> {
           };
 
           loop {
-            if flush_batch.len() == flush_batch.capacity() {
+            if write_batch.len() == write_batch.capacity() {
                 break;
             }
 
             match send_msg_rx.try_recv() {
               Ok((message, payload_opt)) => {
                   let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
-                  flush_batch.push((message_buff, payload_opt));
+                  write_batch.push((message_buff, payload_opt));
               },
               Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
               Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
@@ -1053,11 +1044,11 @@ impl<D: Dispatcher> ConnInner<D> {
             }
           }
 
-          let iovs_count = Self::prepare_iovs(flush_batch.as_ptr(), flush_batch.len(), iovs.as_mut_ptr());
+          let iovs_count = Self::prepare_iovs(write_batch.as_ptr(), write_batch.len(), iovs.as_mut_ptr());
 
           Self::write_iovs(&mut iovs[..iovs_count], writer).await?;
 
-          flush_batch.clear();
+          write_batch.clear();
         },
 
         // Close the connection.
