@@ -167,11 +167,6 @@ pub struct Limits {
   #[serde(default = "default_outbound_message_queue_size")]
   pub outbound_message_queue_size: u32,
 
-  /// The maximum number of messages that will be batched
-  /// after serialization before flushing to the client.
-  #[serde(default = "default_flush_batch_size")]
-  pub flush_batch_size: u32,
-
   /// The maximum number of bytes that can be sent per second.
   #[serde(default = "default_rate_limit")]
   pub rate_limit: u32,
@@ -209,10 +204,6 @@ fn default_outbound_message_queue_size() -> u32 {
   2048
 }
 
-fn default_flush_batch_size() -> u32 {
-  64
-}
-
 fn default_rate_limit() -> u32 {
   256 * 1024 // 256KB
 }
@@ -232,7 +223,6 @@ impl Default for Limits {
       max_payload_size: default_max_payload_size(),
       max_inflight_requests: default_max_inflight_requests(),
       outbound_message_queue_size: default_outbound_message_queue_size(),
-      flush_batch_size: default_flush_batch_size(),
       rate_limit: default_rate_limit(),
       payload_pool_memory_budget: default_payload_pool_memory_budget(),
     }
@@ -251,7 +241,6 @@ impl From<&Config> for zyn_common::conn::Config {
       outbound_message_queue_size: config.limits.outbound_message_queue_size,
       request_timeout: config.request_timeout,
       max_inflight_requests: config.limits.max_inflight_requests,
-      flush_batch_size: config.limits.flush_batch_size,
       rate_limit: config.limits.rate_limit,
       payload_pool_memory_budget: config.limits.payload_pool_memory_budget,
     }
