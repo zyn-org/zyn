@@ -156,7 +156,7 @@ pub struct Limits {
   /// Total memory budget in bytes for the payload buffer pool.
   /// The pool will allocate buffers of varying sizes up to this total.
   #[serde(default = "default_payload_pool_memory_budget")]
-  pub payload_pool_memory_budget: u32,
+  pub payload_pool_memory_budget: u64,
 
   /// The maximum number of inflight requests per client.
   #[serde(default = "default_max_inflight_requests")]
@@ -208,7 +208,7 @@ fn default_rate_limit() -> u32 {
   256 * 1024 // 256KB
 }
 
-fn default_payload_pool_memory_budget() -> u32 {
+fn default_payload_pool_memory_budget() -> u64 {
   256 * 1024 * 1024 // 256MB
 }
 

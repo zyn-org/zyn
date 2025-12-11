@@ -14,8 +14,8 @@ max_message_size = 32768
 # Maximum payload size in bytes (128KB).
 max_payload_size = 131072
 
-# Payload pool memory budget in bytes (2GB).
-payload_pool_memory_budget = 2147483648
+# Payload pool memory budget in bytes (4GB).
+payload_pool_memory_budget = 4294967296
 
 # Maximum number of clients allowed per channel.
 max_clients_per_channel = 1000
