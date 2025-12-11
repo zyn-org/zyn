@@ -224,7 +224,7 @@ pub struct Config {
 
   /// Total memory budget in bytes for the payload buffer pool.
   /// The pool will allocate buffers of varying sizes up to this total.
-  pub payload_pool_memory_budget: u32,
+  pub payload_pool_memory_budget: u64,
 
   /// The maximum number of outbound messages that can be enqueued
   /// before disconnecting the client.

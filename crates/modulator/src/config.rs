@@ -272,7 +272,7 @@ pub struct Limits {
   pub max_payload_size: u32,
 
   /// The maximum payload pool memory budget allowed.
-  pub payload_pool_memory_budget: u32,
+  pub payload_pool_memory_budget: u64,
 
   /// The maximum number of inflight requests per client.
   pub max_inflight_requests: u32,
