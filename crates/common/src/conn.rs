@@ -874,7 +874,9 @@ impl<D: Dispatcher> ConnInner<D> {
     let mut rate_limit_counter = 0;
     let mut rate_limit_last_check = tokio::time::Instant::now();
 
-    let mut write_batch: Vec<(PoolBuffer, Option<PoolBuffer>)> = Vec::with_capacity(MAX_IOVS);
+    let mut message_buffers_batch: Vec<PoolBuffer> = Vec::with_capacity(MAX_IOVS);
+    let mut payload_buffers_batch: Vec<Option<PoolBuffer>> = Vec::with_capacity(MAX_IOVS);
+
     let mut iovs = vec![IoSlice::new(&[]); MAX_IOVS * 3].into_boxed_slice();
 
     let cancelled = shutdown_token.cancelled();
@@ -1018,7 +1020,9 @@ impl<D: Dispatcher> ConnInner<D> {
           match res {
             Some((message, payload_opt)) => {
                 let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire_buffer().await)?;
-                write_batch.push((message_buff, payload_opt));
+
+                message_buffers_batch.push(message_buff);
+                payload_buffers_batch.push(payload_opt);
             }
             None => {
               error!(handler = handler, service_type = ST::NAME, MESSAGE_CHANNEL_CLOSED_LOG);
@@ -1027,14 +1031,16 @@ impl<D: Dispatcher> ConnInner<D> {
           };
 
           loop {
-            if write_batch.len() == write_batch.capacity() {
+            if message_buffers_batch.len() == message_buffers_batch.capacity() {
                 break;
             }
 
             match send_msg_rx.try_recv() {
               Ok((message, payload_opt)) => {
                   let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire_buffer().await)?;
-                  write_batch.push((message_buff, payload_opt));
+
+                  message_buffers_batch.push(message_buff);
+                  payload_buffers_batch.push(payload_opt);
               },
               Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
               Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
@@ -1044,11 +1050,17 @@ impl<D: Dispatcher> ConnInner<D> {
             }
           }
 
-          let iovs_count = Self::prepare_iovs(write_batch.as_ptr(), write_batch.len(), iovs.as_mut_ptr());
+          let iovs_count = Self::prepare_iovs(
+              message_buffers_batch.as_ptr(),
+              payload_buffers_batch.as_ptr(),
+              message_buffers_batch.len(),
+              iovs.as_mut_ptr(),
+          );
 
           Self::write_iovs(&mut iovs[..iovs_count], writer).await?;
 
-          write_batch.clear();
+          message_buffer_pool.release_buffers(&mut message_buffers_batch);
+          payload_buffers_batch.clear();
         },
 
         // Close the connection.
@@ -1083,10 +1095,12 @@ impl<D: Dispatcher> ConnInner<D> {
   {
     let message_buff = Self::serialize_message(message, message_buffer)?;
 
-    let batch = [(message_buff, payload_opt)];
+    let message_buffer_batch = [message_buff];
+    let payload_buffer_batch = [payload_opt];
 
     let mut iovs = [IoSlice::new(&[]); 3];
-    let iovs_count = Self::prepare_iovs(batch.as_ptr(), 1, iovs.as_mut_ptr());
+    let iovs_count =
+      Self::prepare_iovs(message_buffer_batch.as_ptr(), payload_buffer_batch.as_ptr(), 1, iovs.as_mut_ptr());
 
     Self::write_iovs(&mut iovs[..iovs_count], writer).await?;
 
@@ -1094,7 +1108,8 @@ impl<D: Dispatcher> ConnInner<D> {
   }
 
   fn prepare_iovs<'a>(
-    batch_ptr: *const (PoolBuffer, Option<PoolBuffer>),
+    message_buffer_batch_ptr: *const PoolBuffer,
+    payload_buffer_batch_ptr: *const Option<PoolBuffer>,
     batch_len: usize,
     iovs: *mut IoSlice<'a>,
   ) -> usize {
@@ -1102,10 +1117,11 @@ impl<D: Dispatcher> ConnInner<D> {
 
     unsafe {
       for i in 0..batch_len {
-        let batch_item = &*batch_ptr.add(i);
+        let message_buffer_batch_item = &*message_buffer_batch_ptr.add(i);
+        let payload_buffer_batch_item = &*payload_buffer_batch_ptr.add(i);
 
-        let message_buff = &batch_item.0;
-        let payload_opt = &batch_item.1;
+        let message_buff = &message_buffer_batch_item;
+        let payload_opt = &payload_buffer_batch_item;
 
         *iovs.add(iovs_count) = IoSlice::new(message_buff.as_slice());
         iovs_count += 1;
