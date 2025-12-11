@@ -168,7 +168,7 @@ impl C2sSuite {
 
     let pool = zyn_util::pool::Pool::new(1, max_message_size);
 
-    let tls_socket = TestConn::new(tls_stream, pool.acquire().await, max_message_size);
+    let tls_socket = TestConn::new(tls_stream, pool.acquire_buffer().await, max_message_size);
 
     Ok(tls_socket)
   }

@@ -324,7 +324,7 @@ async fn test_s2m_forward_payload_with_alter() -> anyhow::Result<()> {
   let modulator =
     TestModulator::new().with_forward_message_payload_handler(|payload, _from, _channel_handler| async move {
       let pool = zyn_util::pool::Pool::new(1, 1024);
-      let mut mut_pool_buffer = pool.acquire().await;
+      let mut mut_pool_buffer = pool.acquire_buffer().await;
 
       let mut_buff_ptr = mut_pool_buffer.as_mut_slice();
       let n: usize = {

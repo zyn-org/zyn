@@ -123,7 +123,7 @@ impl zyn_modulator::Modulator for PrivatePayloadSender {
 
         // Create a PoolBuffer from the payload bytes
         {
-          let mut mut_pool_buffer = pool.acquire().await;
+          let mut mut_pool_buffer = pool.acquire_buffer().await;
           let mut_buff_ptr = mut_pool_buffer.as_mut_slice();
 
           mut_buff_ptr[..payload_bytes.len()].copy_from_slice(&payload_bytes);

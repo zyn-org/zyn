@@ -64,7 +64,7 @@ impl<M: Modulator> S2mSuite<M> {
 
     let pool = zyn_util::pool::Pool::new(1, max_message_size);
 
-    let socket = TestConn::new(tcp_stream, pool.acquire().await, max_message_size);
+    let socket = TestConn::new(tcp_stream, pool.acquire_buffer().await, max_message_size);
 
     Ok(socket)
   }
