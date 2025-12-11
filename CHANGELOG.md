@@ -12,6 +12,7 @@ All notable changes to Zyn will be documented in this file.
 * [ENHANCEMENT]: Migrate buffer pool to lock-free async implementation. [#78](https://github.com/zyn-org/zyn/pull/78)
 * [ENHANCEMENT]: Simplify keep-alive with activity-based ping loop to eliminate race conditions. [#82](https://github.com/zyn-org/zyn/pull/82)
 * [ENHANCEMENT]: Refactor write batch handling for efficient pool buffer release. [#85](https://github.com/zyn-org/zyn/pull/85)
+* [ENHANCEMENT]: Improve bucketed pool acquire to block on smallest suitable bucket when buffers unavailable. [#86](https://github.com/zyn-org/zyn/pull/86)
 * [BUGFIX]: Ensure the connection is always gracefully shut down. [#65](https://github.com/zyn-org/zyn/pull/65)
 * [BUGFIX]: Only leave channels when user's last connection closes. [#70](https://github.com/zyn-org/zyn/pull/70)
 
