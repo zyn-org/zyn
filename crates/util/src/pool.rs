@@ -241,21 +241,32 @@ impl BucketedPool {
 
   /// Acquire a mutable buffer of at least the requested size
   ///
-  /// Returns a buffer from the smallest bucket that can accommodate the requested size.
-  /// If no buffer is available in the appropriate bucket, it will try the next larger bucket.
-  /// Returns None if no available buffer is found in any bucket or if the requested size
-  /// is larger than the largest bucket.
+  /// Returns a buffer from the smallest bucket that can accommodate the requested size,
+  /// or None if requested size is larger than the largest bucket.
   ///
   /// # Arguments
   ///
   /// * `size` - The minimum size of the buffer to acquire
-  pub async fn acquire(&self, size: usize) -> Option<MutablePoolBuffer> {
+  pub async fn acquire_buffer(&self, size: usize) -> Option<MutablePoolBuffer> {
+    let mut smallest_suitable_bucket: Option<&Pool> = None;
+
     for bucket in self.buckets.iter() {
-      if bucket.buffer_size() >= size && bucket.has_available() {
-        return Some(bucket.acquire_buffer().await);
+      if bucket.buffer_size() >= size {
+        if bucket.has_available() {
+          return Some(bucket.acquire_buffer().await);
+        } else if smallest_suitable_bucket.is_none() {
+          // Keep a reference to the first bucket that can accommodate the requested size.
+          smallest_suitable_bucket = Some(bucket);
+        }
       }
-      // If the bucket could not satisfy the request, try the next larger bucket
     }
+
+    // If no buckets have available buffers, it will block on the smallest
+    // suitable bucket, waiting for a buffer to be returned to the pool.
+    if let Some(bucket) = smallest_suitable_bucket {
+      return Some(bucket.acquire_buffer().await);
+    }
+
     None
   }
 
@@ -711,19 +722,19 @@ mod bucketed_pool_tests {
     let pool = BucketedPool::new_with_memory_budget(100, 800, 100 * 1024, 100, 2, 0.5);
 
     // Request 50 bytes - should get from bucket 0 (100 bytes)
-    let buf1 = pool.acquire(50).await.unwrap();
+    let buf1 = pool.acquire_buffer(50).await.unwrap();
     assert_eq!(buf1.len(), 100);
 
     // Request 150 bytes - should get from bucket 1 (200 bytes)
-    let buf2 = pool.acquire(150).await.unwrap();
+    let buf2 = pool.acquire_buffer(150).await.unwrap();
     assert_eq!(buf2.len(), 200);
 
     // Request 350 bytes - should get from bucket 2 (400 bytes)
-    let buf3 = pool.acquire(350).await.unwrap();
+    let buf3 = pool.acquire_buffer(350).await.unwrap();
     assert_eq!(buf3.len(), 400);
 
     // Request 700 bytes - should get from bucket 3 (800 bytes)
-    let buf4 = pool.acquire(700).await.unwrap();
+    let buf4 = pool.acquire_buffer(700).await.unwrap();
     assert_eq!(buf4.len(), 800);
   }
 
@@ -733,7 +744,7 @@ mod bucketed_pool_tests {
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
 
     // Request 500 bytes - larger than max bucket (400), should return None
-    let buf = pool.acquire(500).await;
+    let buf = pool.acquire_buffer(500).await;
     assert!(buf.is_none());
 
     // Verify pool stats remain unchanged
@@ -751,9 +762,9 @@ mod bucketed_pool_tests {
 
     // Acquire and release buffers
     {
-      let _buf1 = pool.acquire(50).await.unwrap();
-      let _buf2 = pool.acquire(150).await.unwrap();
-      let _buf3 = pool.acquire(350).await.unwrap();
+      let _buf1 = pool.acquire_buffer(50).await.unwrap();
+      let _buf2 = pool.acquire_buffer(150).await.unwrap();
+      let _buf3 = pool.acquire_buffer(350).await.unwrap();
 
       assert_eq!(pool.total_in_use_count(), 3);
       assert!(pool.total_available_count() < initial_available);
@@ -775,7 +786,7 @@ mod bucketed_pool_tests {
       let handle = thread::spawn(async move || {
         // Each thread requests a different size (max 4000 to stay within 4096 limit)
         let size = 400 + i * 350;
-        let mut buf = pool_clone.acquire(size).await.unwrap();
+        let mut buf = pool_clone.acquire_buffer(size).await.unwrap();
 
         // Write some data
         buf.as_mut_slice()[0] = i as u8;
@@ -808,9 +819,9 @@ mod bucketed_pool_tests {
     assert!(initial_available > 0);
 
     // Acquire some buffers
-    let buf1 = pool.acquire(50).await.unwrap(); // From first bucket
-    let buf2 = pool.acquire(150).await.unwrap(); // From second bucket
-    let buf3 = pool.acquire(350).await.unwrap(); // From third bucket
+    let buf1 = pool.acquire_buffer(50).await.unwrap(); // From first bucket
+    let buf2 = pool.acquire_buffer(150).await.unwrap(); // From second bucket
+    let buf3 = pool.acquire_buffer(350).await.unwrap(); // From third bucket
 
     assert_eq!(pool.total_in_use_count(), 3);
     assert_eq!(pool.total_available_count(), initial_available - 3);
@@ -833,13 +844,13 @@ mod bucketed_pool_tests {
     let pool = BucketedPool::new_with_memory_budget(100, 400, 10 * 1024, 100, 2, 0.5);
 
     // Request exactly the bucket sizes
-    let buf1 = pool.acquire(100).await.unwrap();
+    let buf1 = pool.acquire_buffer(100).await.unwrap();
     assert_eq!(buf1.len(), 100);
 
-    let buf2 = pool.acquire(200).await.unwrap();
+    let buf2 = pool.acquire_buffer(200).await.unwrap();
     assert_eq!(buf2.len(), 200);
 
-    let buf3 = pool.acquire(400).await.unwrap();
+    let buf3 = pool.acquire_buffer(400).await.unwrap();
     assert_eq!(buf3.len(), 400);
   }
 
@@ -867,9 +878,9 @@ mod bucketed_pool_tests {
     let initial_available = pool.total_available_count();
 
     // Mix of pool allocations and None
-    let buf1 = pool.acquire(50).await.unwrap(); // Pool: bucket 0
-    let buf2 = pool.acquire(150).await.unwrap(); // Pool: bucket 1
-    let buf3 = pool.acquire(300).await; // None: too large
+    let buf1 = pool.acquire_buffer(50).await.unwrap(); // Pool: bucket 0
+    let buf2 = pool.acquire_buffer(150).await.unwrap(); // Pool: bucket 1
+    let buf3 = pool.acquire_buffer(300).await; // None: too large
 
     assert_eq!(buf1.len(), 100);
     assert_eq!(buf2.len(), 200);
@@ -910,7 +921,7 @@ mod bucketed_pool_tests {
     assert_eq!(pool.total_in_use_count(), cloned_pool.total_in_use_count());
 
     // Acquire from one pool
-    let buf = pool.acquire(50).await.unwrap();
+    let buf = pool.acquire_buffer(50).await.unwrap();
     assert_eq!(pool.total_in_use_count(), 1);
     // Since BucketedPool uses Arc internally, both clones share the same state
     assert_eq!(cloned_pool.total_in_use_count(), 1);
@@ -943,7 +954,7 @@ mod bucketed_pool_tests {
 
     // Keep acquiring until we get a 200-byte buffer (indicating 100-byte bucket is exhausted)
     loop {
-      let buf = pool.acquire(50).await.unwrap();
+      let buf = pool.acquire_buffer(50).await.unwrap();
       if buf.len() == 200 {
         // We've fallen back to the next bucket
         assert!(count_from_100 > 0, "should have gotten at least one buffer from 100-byte bucket");
@@ -960,23 +971,16 @@ mod bucketed_pool_tests {
     }
 
     // Now verify that subsequent small requests also fall back
-    let buf2 = pool.acquire(50).await.unwrap();
+    let buf2 = pool.acquire_buffer(50).await.unwrap();
     assert_eq!(buf2.len(), 200, "should still get from 200-byte bucket");
     drop(buf2);
 
-    // Acquire all remaining buffers
-    let mut remaining_buffers = Vec::new();
-    while let Some(buf) = pool.acquire(50).await {
-      remaining_buffers.push(buf);
-    }
-
-    // Now all buckets should be exhausted
-    let buf = pool.acquire(50).await;
-    assert!(buf.is_none(), "all buckets should be exhausted");
-
-    // Clean up
+    // Release the buffers so they can be reused
     drop(small_buffers);
-    drop(remaining_buffers);
+
+    // Now that buffers are released, we should be able to acquire from the 100-byte bucket again
+    let buf3 = pool.acquire_buffer(50).await.unwrap();
+    assert_eq!(buf3.len(), 100, "should get from 100-byte bucket again after release");
   }
 
   #[tokio::test]
@@ -1027,13 +1031,13 @@ mod bucketed_pool_tests {
     );
 
     // Verify the pool still works correctly
-    let buf1 = pool.acquire(500).await.unwrap();
+    let buf1 = pool.acquire_buffer(500).await.unwrap();
     assert_eq!(buf1.len(), 1024);
 
-    let buf2 = pool.acquire(3000).await.unwrap();
+    let buf2 = pool.acquire_buffer(3000).await.unwrap();
     assert_eq!(buf2.len(), 4096);
 
-    let buf3 = pool.acquire(10000).await.unwrap();
+    let buf3 = pool.acquire_buffer(10000).await.unwrap();
     assert_eq!(buf3.len(), 16384);
 
     // Track available before cleanup
