@@ -421,7 +421,7 @@ async fn broadcast_message(
   payload_pool: Pool,
   max_payload_size: usize,
 ) -> anyhow::Result<u64> {
-  let mut payload_buffer = payload_pool.acquire().await;
+  let mut payload_buffer = payload_pool.acquire_buffer().await;
   let random_size = rand::rng().random_range(1..=max_payload_size);
   let payload = payload_buffer.freeze(random_size);
 

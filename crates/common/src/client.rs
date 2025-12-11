@@ -829,7 +829,7 @@ where
       self.conn_id,
       wh,
       writer_rx,
-      payload_pool.acquire().await,
+      payload_pool.acquire_buffer().await,
       self.error_state.clone(),
       shutdown_token.clone(),
     ));
@@ -839,7 +839,7 @@ where
       self.client_id.clone(),
       self.conn_id,
       rh,
-      message_pool.acquire().await,
+      message_pool.acquire_buffer().await,
       payload_pool,
       self.pending_requests.clone(),
       self.error_state.clone(),
@@ -1029,7 +1029,7 @@ where
               match deserialize(Cursor::new(line_bytes)) {
                 Ok(msg) => {
                     // Read optional payload.
-                    let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.acquire().await, payload_read_timeout).await {
+                    let res = match Self::read_message_payload(&msg, &mut stream_reader, payload_buffer_pool.acquire_buffer().await, payload_read_timeout).await {
                         Ok(payload_opt) => Ok((msg.clone(), payload_opt)),
                         Err(e) => Err(anyhow!(e)),
                     };

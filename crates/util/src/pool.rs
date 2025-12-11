@@ -49,11 +49,23 @@ impl Pool {
   }
 
   /// Get a mutable buffer from the pool.
-  pub async fn acquire(&self) -> MutablePoolBuffer {
+  pub async fn acquire_buffer(&self) -> MutablePoolBuffer {
     let permit = self.0.sem.clone().acquire_owned().await.unwrap();
     let buffer = self.0.available.pop().unwrap();
 
     MutablePoolBuffer(PoolBufferInner { data: Some(buffer), pool: Some(self.0.clone()), permit: Some(permit) })
+  }
+
+  /// Release multiple buffers back to the pool.
+  pub fn release_buffers(&self, buffers: &mut Vec<PoolBuffer>) {
+    let mut n = 0;
+    for buffer in buffers.drain(..) {
+      if let Some(bytes_mut) = buffer.try_into_bytes_mut() {
+        self.0.available.force_push(bytes_mut);
+        n += 1;
+      }
+    }
+    self.0.sem.add_permits(n);
   }
 
   /// Get the number of buffers currently in use.
@@ -240,7 +252,7 @@ impl BucketedPool {
   pub async fn acquire(&self, size: usize) -> Option<MutablePoolBuffer> {
     for bucket in self.buckets.iter() {
       if bucket.buffer_size() >= size && bucket.has_available() {
-        return Some(bucket.acquire().await);
+        return Some(bucket.acquire_buffer().await);
       }
       // If the bucket could not satisfy the request, try the next larger bucket
     }
@@ -393,6 +405,19 @@ impl PoolBuffer {
   pub fn is_empty(&self) -> bool {
     self.len == 0
   }
+
+  /// Attempts to unwrap the underlying `BytesMut` from the pool buffer.
+  fn try_into_bytes_mut(self) -> Option<BytesMut> {
+    match Arc::try_unwrap(self.inner) {
+      Ok(mut inner) => {
+        if let Some(permit) = inner.permit.take() {
+          permit.forget();
+        }
+        inner.data.take()
+      },
+      Err(_) => None,
+    }
+  }
 }
 
 impl Deref for PoolBuffer {
@@ -416,8 +441,8 @@ mod pool_tests {
     assert_eq!(pool.available_count(), 5);
 
     // Get some buffers
-    let buf1 = pool.acquire().await;
-    let buf2 = pool.acquire().await;
+    let buf1 = pool.acquire_buffer().await;
+    let buf2 = pool.acquire_buffer().await;
 
     assert_eq!(pool.in_use_count(), 2);
     assert_eq!(pool.available_count(), 3);
@@ -434,7 +459,7 @@ mod pool_tests {
   #[tokio::test]
   async fn test_shared_buffer_conversion() {
     let pool = Pool::new(1, 1024);
-    let mut buf = pool.acquire().await;
+    let mut buf = pool.acquire_buffer().await;
 
     // Write some data
     buf.as_mut_slice()[0] = 42;
@@ -461,7 +486,7 @@ mod pool_tests {
     for i in 0..10 {
       let pool_clone = pool.clone();
       let handle = thread::spawn(async move || {
-        let mut buf = pool_clone.acquire().await;
+        let mut buf = pool_clone.acquire_buffer().await;
         buf.as_mut_slice()[0] = i as u8;
         assert_eq!(buf.as_slice()[0], i as u8);
       });

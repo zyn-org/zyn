@@ -867,7 +867,7 @@ impl<D: Dispatcher> ConnInner<D> {
     ST: Service,
   {
     // Initialize stream reader
-    let read_pool_buffer = message_buffer_pool.acquire().await;
+    let read_pool_buffer = message_buffer_pool.acquire_buffer().await;
     let mut stream_reader = StreamReader::with_pool_buffer(reader, read_pool_buffer);
 
     // Initialize connection loop state
@@ -907,7 +907,7 @@ impl<D: Dispatcher> ConnInner<D> {
                   if let Some(payload_info) = msg.payload_info() {
                     if payload_info.length > max_payload_size {
                       let err_message = Message::Error(ErrorParameters{id: payload_info.id, reason: PolicyViolation.into(), detail: Some("payload too large".into())});
-                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                       break 'connection_loop;
                     }
                     payload_length = payload_info.length as u32;
@@ -916,7 +916,7 @@ impl<D: Dispatcher> ConnInner<D> {
                         match payload_buffer_pool.acquire(payload_info.length).await {
                             Some(buffer) => buffer,
                             None => {
-                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.acquire().await).await?;
+                                Self::write_message(&Message::Error(ErrorParameters{id: payload_info.id, reason: ServerOverloaded.into(), detail: Some("payload buffer pool exhausted".into())}), None, writer, message_buffer_pool.acquire_buffer().await).await?;
                                 continue 'connection_loop;
                             }
                         }
@@ -940,14 +940,14 @@ impl<D: Dispatcher> ConnInner<D> {
                                 }
                             };
 
-                            Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                            Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                             break 'connection_loop;
                           },
                         }
                       },
                       Err(_) => {
                         let err_message = Message::Error(ErrorParameters{id: None, reason: Timeout.into(), detail: Some("payload read timeout".into())});
-                        Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                        Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                         break 'connection_loop;
                       },
                     }
@@ -966,7 +966,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
                     if rate_limit_counter > rate_limit {
                       let err_message = Message::Error(ErrorParameters{id: msg.correlation_id(), reason: PolicyViolation.into(), detail: Some("rate limit exceeded".into())});
-                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                      Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                       break 'connection_loop;
                     }
                   }
@@ -983,7 +983,7 @@ impl<D: Dispatcher> ConnInner<D> {
                 Err(e) => {
                   let err_detail = format!("{}", e);
                   let err_message = Message::Error(ErrorParameters{id: None, reason: BadRequest.into(), detail: Some(StringAtom::from(err_detail))});
-                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                   break 'connection_loop;
                 },
               }
@@ -997,7 +997,7 @@ impl<D: Dispatcher> ConnInner<D> {
               match e {
                 StreamReaderError::MaxLineLengthExceeded => {
                   let err_message = Message::Error(ErrorParameters{ id: None, reason: PolicyViolation.into(), detail: Some("max message size exceeded".into()) });
-                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+                  Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
                   break 'connection_loop;
                 },
                 StreamReaderError::IoError(e) => {
@@ -1017,7 +1017,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
           match res {
             Some((message, payload_opt)) => {
-                let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
+                let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire_buffer().await)?;
                 write_batch.push((message_buff, payload_opt));
             }
             None => {
@@ -1033,7 +1033,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
             match send_msg_rx.try_recv() {
               Ok((message, payload_opt)) => {
-                  let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire().await)?;
+                  let message_buff = Self::serialize_message(&message, message_buffer_pool.acquire_buffer().await)?;
                   write_batch.push((message_buff, payload_opt));
               },
               Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
@@ -1054,7 +1054,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection.
         res = close_rx.recv() => {
           let err_message = res.unwrap();
-          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
           trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
@@ -1062,7 +1062,7 @@ impl<D: Dispatcher> ConnInner<D> {
         // Close the connection on shutdown.
         _ = &mut cancelled => {
           let err_message = Message::Error(ErrorParameters{id: None, reason: ServerShuttingDown.into(), detail: None});
-          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire().await).await?;
+          Self::write_message(&err_message, None, writer, message_buffer_pool.acquire_buffer().await).await?;
           trace!(handler = handler, service_type = ST::NAME, "closed connection");
           break 'connection_loop;
         },
