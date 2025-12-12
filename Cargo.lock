@@ -2058,7 +2058,7 @@ checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 
 [[package]]
 name = "zyn-benchmark"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2083,7 +2083,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2103,7 +2103,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-common"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2121,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-modulator"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2141,7 +2141,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-protocol"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "once_cell",
@@ -2153,7 +2153,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-protocol-macros"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2162,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-server"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2194,7 +2194,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-test-util"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2214,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "zyn-util"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",

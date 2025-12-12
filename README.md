@@ -169,7 +169,7 @@ RUST_LOG=debug cargo run --bin zyn-server
 
 ## Project Status
 
-**Current Version: 0.2.0 (Alpha)**
+**Current Version: 0.3.0 (Alpha)**
 
 Zyn is in active development and currently in **alpha** stage. While the core functionality is working and tested, please note:
 
