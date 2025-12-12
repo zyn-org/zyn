@@ -14,6 +14,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use zyn_client::c2s::{AuthMethod, C2sClient, C2sConfig};
+use zyn_protocol::QoS;
 use zyn_util::pool::Pool;
 use zyn_util::string_atom::StringAtom;
 
@@ -427,7 +428,7 @@ async fn broadcast_message(
 
   let start = tokio::time::Instant::now();
 
-  client.broadcast(channel, None, payload).await?;
+  client.broadcast(channel, Some(QoS::AckOnReceived), payload).await?;
   let elapsed_ms = start.elapsed().as_millis() as u64;
 
   Ok(elapsed_ms)
