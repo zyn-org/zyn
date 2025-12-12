@@ -845,7 +845,7 @@ impl ChannelManager {
     }
     let qos = qos.map(QoS::try_from).transpose()?.unwrap_or(QoS::default());
 
-    if qos == QoS::AckOnReceive {
+    if qos == QoS::AckOnReceived {
       transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
     }
 
@@ -858,7 +858,7 @@ impl ChannelManager {
 
     router.route_to_many(msg, Some(payload), allowed_targets.iter(), Some(transmitter.resource())).await?;
 
-    if qos == QoS::AckOnRouted {
+    if qos == QoS::AckOnDelivered {
       transmitter.send_message(Message::BroadcastAck(BroadcastAckParameters { id: correlation_id }));
     }
 

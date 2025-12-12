@@ -7,11 +7,11 @@ use std::fmt;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QoS {
   /// Acknowledge as soon as the payload is received
-  AckOnReceive = 0,
+  AckOnReceived = 0,
 
   /// Acknowledge when the payload has been enqueued for delivery to all channel members
   #[default]
-  AckOnRouted = 1,
+  AckOnDelivered = 1,
 }
 
 impl QoS {
@@ -24,8 +24,8 @@ impl QoS {
   /// Returns None if the value is not valid.
   pub const fn from_u8(value: u8) -> Option<Self> {
     match value {
-      0 => Some(QoS::AckOnReceive),
-      1 => Some(QoS::AckOnRouted),
+      0 => Some(QoS::AckOnReceived),
+      1 => Some(QoS::AckOnDelivered),
       _ => None,
     }
   }
@@ -48,8 +48,8 @@ impl TryFrom<u8> for QoS {
 impl fmt::Display for QoS {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      QoS::AckOnReceive => write!(f, "AckOnReceive"),
-      QoS::AckOnRouted => write!(f, "AckOnRouted"),
+      QoS::AckOnReceived => write!(f, "AckOnReceived"),
+      QoS::AckOnDelivered => write!(f, "AckOnDelivered"),
     }
   }
 }
