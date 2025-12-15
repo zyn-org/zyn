@@ -126,9 +126,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-util",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
@@ -145,9 +145,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-util",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
@@ -653,9 +653,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-util",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
@@ -686,9 +686,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-util",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
@@ -1521,7 +1521,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zyn-common"
+name = "entangle-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1532,12 +1532,12 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "zyn-protocol",
- "zyn-util",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
-name = "zyn-modulator"
+name = "entangle-modulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1550,24 +1550,24 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "zyn-common",
- "zyn-protocol",
- "zyn-util",
+ "entangle-common",
+ "entangle-protocol",
+ "entangle-util",
 ]
 
 [[package]]
-name = "zyn-protocol"
+name = "entangle-protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "once_cell",
  "regex",
- "zyn-protocol-macros",
- "zyn-util",
+ "entangle-protocol-macros",
+ "entangle-util",
 ]
 
 [[package]]
-name = "zyn-protocol-macros"
+name = "entangle-protocol-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
@@ -1576,7 +1576,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zyn-util"
+name = "entangle-util"
 version = "0.1.0"
 dependencies = [
  "anyhow",

@@ -11,17 +11,17 @@ use tokio::sync::{Mutex, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, trace, warn};
 
-use zyn_common::conn::{ConnTx, State};
-use zyn_common::service::{M2sService, S2mService};
-use zyn_protocol::ErrorReason::{BadRequest, Unauthorized, UnexpectedMessage, UnsupportedProtocolVersion};
-use zyn_protocol::{Event, S2mModDirectAckParameters, Zid};
-use zyn_protocol::{
+use entangle_common::conn::{ConnTx, State};
+use entangle_common::service::{M2sService, S2mService};
+use entangle_protocol::ErrorReason::{BadRequest, Unauthorized, UnexpectedMessage, UnsupportedProtocolVersion};
+use entangle_protocol::{Event, S2mModDirectAckParameters, Zid};
+use entangle_protocol::{
   M2sConnectAckParameters, M2sModDirectAckParameters, Message, S2mAuthAckParameters, S2mConnectAckParameters,
   S2mForwardBroadcastPayloadAckParameters, S2mForwardEventAckParameters,
 };
-use zyn_util::pool::PoolBuffer;
-use zyn_util::slab::{Slab, SlabRef};
-use zyn_util::string_atom::StringAtom;
+use entangle_util::pool::PoolBuffer;
+use entangle_util::slab::{Slab, SlabRef};
+use entangle_util::string_atom::StringAtom;
 
 use crate::client::M2sClient;
 use crate::modulator::{
@@ -32,10 +32,10 @@ use crate::modulator::{
 use crate::{M2sServerConfig, Modulator, S2mServerConfig};
 
 /// The S2M connection manager.
-pub type S2mConnManager<M> = zyn_common::conn::ConnManager<S2mDispatcher<M>, S2mDispatcherFactory<M>, S2mService>;
+pub type S2mConnManager<M> = entangle_common::conn::ConnManager<S2mDispatcher<M>, S2mDispatcherFactory<M>, S2mService>;
 
 /// The M2S connection manager.
-pub type M2sConnManager = zyn_common::conn::ConnManager<M2sDispatcher, M2sDispatcherFactory, M2sService>;
+pub type M2sConnManager = entangle_common::conn::ConnManager<M2sDispatcher, M2sDispatcherFactory, M2sService>;
 
 #[derive(Clone, Debug)]
 pub struct M2sDispatcherFactory(Arc<Mutex<M2sDispatcherFactoryInner>>);
@@ -53,7 +53,7 @@ impl M2sDispatcherFactory {
 }
 
 #[async_trait::async_trait]
-impl zyn_common::conn::DispatcherFactory<M2sDispatcher> for M2sDispatcherFactory {
+impl entangle_common::conn::DispatcherFactory<M2sDispatcher> for M2sDispatcherFactory {
   async fn create(&mut self, handler: usize, tx: ConnTx) -> SlabRef<M2sDispatcher> {
     let mut inner = self.0.lock().await;
 
@@ -126,7 +126,7 @@ impl DerefMut for M2sDispatcher {
 }
 
 #[async_trait::async_trait]
-impl zyn_common::conn::Dispatcher for M2sDispatcher {
+impl entangle_common::conn::Dispatcher for M2sDispatcher {
   /// Dispatches incoming messages based on the current connection state.
   ///
   /// This is the main entry point for message handling that:
@@ -164,7 +164,7 @@ impl zyn_common::conn::Dispatcher for M2sDispatcher {
         self.dispatch_message_in_authenticated_state(msg, payload).await?;
         Ok(None)
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -182,7 +182,7 @@ impl M2sDispatcher {
     match msg {
       Message::M2sConnect(params) => {
         if params.protocol_version != 1 {
-          return Err(zyn_protocol::Error::new(UnsupportedProtocolVersion).into());
+          return Err(entangle_protocol::Error::new(UnsupportedProtocolVersion).into());
         }
         let config = self.config.clone();
 
@@ -191,7 +191,7 @@ impl M2sDispatcher {
           { if !config.shared_secret.is_empty() { Some(config.shared_secret.as_str().into()) } else { None } };
 
         if shared_secret.is_some() && params.secret != shared_secret {
-          return Err(zyn_protocol::Error::new(Unauthorized).into());
+          return Err(entangle_protocol::Error::new(Unauthorized).into());
         }
 
         let config_keep_alive_interval = config.keep_alive_interval;
@@ -218,7 +218,7 @@ impl M2sDispatcher {
 
         Ok(heartbeat_interval)
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -251,10 +251,10 @@ impl M2sDispatcher {
         Some(p) => self.dispatch_mod_direct_message(msg, p).await,
         None => {
           error!(handler = self.handler, "M2sModDirect message received without payload");
-          Err(zyn_protocol::Error::new(BadRequest).into())
+          Err(entangle_protocol::Error::new(BadRequest).into())
         },
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -403,7 +403,7 @@ impl<M: Modulator> S2mDispatcherFactory<M> {
 }
 
 #[async_trait::async_trait]
-impl<M: Modulator> zyn_common::conn::DispatcherFactory<S2mDispatcher<M>> for S2mDispatcherFactory<M> {
+impl<M: Modulator> entangle_common::conn::DispatcherFactory<S2mDispatcher<M>> for S2mDispatcherFactory<M> {
   async fn create(&mut self, handler: usize, tx: ConnTx) -> SlabRef<S2mDispatcher<M>> {
     let mut inner = self.0.lock().await;
 
@@ -494,7 +494,7 @@ impl<M: Modulator> DerefMut for S2mDispatcher<M> {
 }
 
 #[async_trait::async_trait]
-impl<M: Modulator> zyn_common::conn::Dispatcher for S2mDispatcher<M> {
+impl<M: Modulator> entangle_common::conn::Dispatcher for S2mDispatcher<M> {
   /// Dispatches incoming messages based on the current connection state.
   ///
   /// This is the main entry point for message handling that:
@@ -532,7 +532,7 @@ impl<M: Modulator> zyn_common::conn::Dispatcher for S2mDispatcher<M> {
         self.dispatch_message_in_authenticated_state(msg, payload).await?;
         Ok(None)
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -574,7 +574,7 @@ impl<M: Modulator> S2mDispatcher<M> {
     match msg {
       Message::S2mConnect(params) => {
         if params.protocol_version != 1 {
-          return Err(zyn_protocol::Error::new(UnsupportedProtocolVersion).into());
+          return Err(entangle_protocol::Error::new(UnsupportedProtocolVersion).into());
         }
         let config = self.config.server.clone();
 
@@ -583,7 +583,7 @@ impl<M: Modulator> S2mDispatcher<M> {
           { if !config.shared_secret.is_empty() { Some(config.shared_secret.as_str().into()) } else { None } };
 
         if shared_secret.is_some() && params.secret != shared_secret {
-          return Err(zyn_protocol::Error::new(Unauthorized).into());
+          return Err(entangle_protocol::Error::new(Unauthorized).into());
         }
 
         let config_keep_alive_interval = config.keep_alive_interval;
@@ -612,7 +612,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
         Ok(heartbeat_interval)
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -642,7 +642,7 @@ impl<M: Modulator> S2mDispatcher<M> {
         self.dispatch_forward_message_payload_message(msg, payload.unwrap()).await
       },
       Message::S2mForwardEvent(_) => self.dispatch_forward_event_message(msg).await,
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -667,7 +667,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
     // Check if the modulator supports the Auth operation.
     if !self.modulator.operations().await?.contains(Operation::Auth) {
-      return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+      return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
     }
 
     let params = match msg {
@@ -715,7 +715,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
     // Check if the modulator supports the SendPrivatePayload operation.
     if !self.modulator.operations().await?.contains(Operation::SendPrivatePayload) {
-      return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+      return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
     }
 
     let params = match msg {
@@ -762,7 +762,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
     // Check if the modulator supports the ForwardMessagePayload operation.
     if !self.modulator.operations().await?.contains(Operation::ForwardBroadcastPayload) {
-      return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+      return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
     }
 
     let params = match msg {
@@ -773,7 +773,7 @@ impl<M: Modulator> S2mDispatcher<M> {
     let from_zid = match Zid::from_str(params.from.as_ref()) {
       std::result::Result::Ok(zid) => zid,
       std::result::Result::Err(_) => {
-        return Err(zyn_protocol::Error::new(BadRequest).with_id(params.id).into());
+        return Err(entangle_protocol::Error::new(BadRequest).with_id(params.id).into());
       },
     };
 
@@ -859,7 +859,7 @@ impl<M: Modulator> S2mDispatcher<M> {
 
     // Check if the modulator supports the ForwardEvent operation.
     if !self.modulator.operations().await?.contains(Operation::ForwardEvent) {
-      return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+      return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
     }
 
     let params = match msg {

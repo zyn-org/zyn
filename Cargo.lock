@@ -489,6 +489,182 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
+name = "entangle-benchmark"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "entangle-client",
+ "entangle-protocol",
+ "entangle-util",
+ "futures",
+ "hdrhistogram",
+ "indicatif",
+ "rand",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "webpki-roots",
+]
+
+[[package]]
+name = "entangle-client"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "entangle-common",
+ "entangle-protocol",
+ "entangle-test-util",
+ "entangle-util",
+ "futures",
+ "humantime-serde",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "entangle-common"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deadpool",
+ "entangle-protocol",
+ "entangle-util",
+ "futures",
+ "parking_lot",
+ "rand",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "entangle-modulator"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deadpool",
+ "entangle-common",
+ "entangle-protocol",
+ "entangle-test-util",
+ "entangle-util",
+ "humantime-serde",
+ "parking_lot",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "entangle-protocol"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "entangle-protocol-macros",
+ "entangle-util",
+ "once_cell",
+ "regex",
+ "tokio",
+]
+
+[[package]]
+name = "entangle-protocol-macros"
+version = "0.3.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "entangle-server"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "console-subscriber",
+ "dashmap",
+ "entangle-client",
+ "entangle-common",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-test-util",
+ "entangle-util",
+ "humantime-serde",
+ "parking_lot",
+ "rcgen",
+ "rlimit",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-pki-types",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "entangle-test-util"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "entangle-common",
+ "entangle-modulator",
+ "entangle-protocol",
+ "entangle-server",
+ "entangle-util",
+ "futures",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "webpki-roots",
+]
+
+[[package]]
+name = "entangle-util"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "crossbeam-queue",
+ "humantime",
+ "parking_lot",
+ "rand",
+ "rustls",
+ "serde",
+ "smallvec",
+ "string_cache",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2212,179 +2388,3 @@ name = "zeroize"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
-
-[[package]]
-name = "zyn-benchmark"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "clap",
- "futures",
- "hdrhistogram",
- "indicatif",
- "rand",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "webpki-roots",
- "zyn-client",
- "zyn-protocol",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-client"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures",
- "humantime-serde",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-rustls",
- "tokio-stream",
- "tracing",
- "zyn-common",
- "zyn-protocol",
- "zyn-test-util",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-common"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deadpool",
- "futures",
- "parking_lot",
- "rand",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
- "zyn-protocol",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-modulator"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deadpool",
- "humantime-serde",
- "parking_lot",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-util",
- "tracing",
- "zyn-common",
- "zyn-protocol",
- "zyn-test-util",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-protocol"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "once_cell",
- "regex",
- "tokio",
- "zyn-protocol-macros",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-protocol-macros"
-version = "0.3.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "zyn-server"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "console-subscriber",
- "dashmap",
- "humantime-serde",
- "parking_lot",
- "rcgen",
- "rlimit",
- "rustls",
- "rustls-pemfile",
- "rustls-pki-types",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "toml",
- "tracing",
- "tracing-subscriber",
- "zyn-client",
- "zyn-common",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-test-util",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-test-util"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures",
- "rustls",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "webpki-roots",
- "zyn-common",
- "zyn-modulator",
- "zyn-protocol",
- "zyn-server",
- "zyn-util",
-]
-
-[[package]]
-name = "zyn-util"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "crossbeam-queue",
- "humantime",
- "parking_lot",
- "rand",
- "rustls",
- "serde",
- "smallvec",
- "string_cache",
- "tokio",
- "tokio-rustls",
- "webpki-roots",
-]

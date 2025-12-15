@@ -1,5 +1,5 @@
 [package]
-name = "zyn-modulator"
+name = "entangle-modulator"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
@@ -15,9 +15,9 @@ serde_derive = "1.0.219"
 tracing = "0.1.41"
 tokio = { version = "1.48.0", features = ["io-util", "signal"] }
 tokio-util = { version = "0.7.15", features = ["rt"] }
-zyn-common = { path = "../common" }
-zyn-protocol = { path = "../protocol" }
-zyn-util = { path = "../util" }
+entangle-common = { path = "../common" }
+entangle-protocol = { path = "../protocol" }
+entangle-util = { path = "../util" }
 
 [dev-dependencies]
-zyn-test-util = { path = "../test-util" }
+entangle-test-util = { path = "../test-util" }

@@ -4,15 +4,15 @@ use std::sync::Arc;
 
 use tokio::net::TcpStream;
 
-use zyn_modulator::{Modulator, S2mListener};
-use zyn_protocol::{Message, S2mConnectParameters};
+use entangle_modulator::{Modulator, S2mListener};
+use entangle_protocol::{Message, S2mConnectParameters};
 
 use crate::TestConn;
 
 /// A test suite for the S2M server.
 pub struct S2mSuite<M: Modulator> {
   /// The server configuration.
-  config: Arc<zyn_modulator::S2mServerConfig>,
+  config: Arc<entangle_modulator::S2mServerConfig>,
 
   /// The modulator server listener.
   ln: S2mListener<M>,
@@ -22,15 +22,15 @@ pub struct S2mSuite<M: Modulator> {
 
 impl<M: Modulator> S2mSuite<M> {
   /// Creates a new S2mSuite with the given configuration and modulator.
-  pub fn with_config(config: zyn_modulator::S2mServerConfig, modulator: M) -> Self {
+  pub fn with_config(config: entangle_modulator::S2mServerConfig, modulator: M) -> Self {
     let arc_config = Arc::new(config);
 
     let dispatcher_factory =
-      zyn_modulator::conn::S2mDispatcherFactory::<M>::new(arc_config.clone(), Arc::new(modulator));
+      entangle_modulator::conn::S2mDispatcherFactory::<M>::new(arc_config.clone(), Arc::new(modulator));
 
     let server_config = arc_config.server.clone();
 
-    let conn_mng = zyn_modulator::conn::S2mConnManager::<M>::new(&server_config, dispatcher_factory);
+    let conn_mng = entangle_modulator::conn::S2mConnManager::<M>::new(&server_config, dispatcher_factory);
 
     let ln = S2mListener::new(server_config.listener.clone(), conn_mng.clone());
 
@@ -38,7 +38,7 @@ impl<M: Modulator> S2mSuite<M> {
   }
 
   /// Returns the server configuration.
-  pub fn config(&self) -> Arc<zyn_modulator::S2mServerConfig> {
+  pub fn config(&self) -> Arc<entangle_modulator::S2mServerConfig> {
     self.config.clone()
   }
 
@@ -62,7 +62,7 @@ impl<M: Modulator> S2mSuite<M> {
 
     let max_message_size = self.config().server.limits.max_message_size as usize;
 
-    let pool = zyn_util::pool::Pool::new(1, max_message_size);
+    let pool = entangle_util::pool::Pool::new(1, max_message_size);
 
     let socket = TestConn::new(tcp_stream, pool.acquire_buffer().await, max_message_size);
 
@@ -124,14 +124,14 @@ impl<M: Modulator> S2mSuite<M> {
 /// # Arguments
 ///
 /// * `secret` - The shared secret to use for authentication
-pub fn default_s2m_config_with_secret(secret: &str) -> zyn_modulator::S2mServerConfig {
-  let s2m_server_config = zyn_modulator::ServerConfig {
-    listener: zyn_modulator::ListenerConfig {
-      network: zyn_modulator::TCP_NETWORK.to_string(),
+pub fn default_s2m_config_with_secret(secret: &str) -> entangle_modulator::S2mServerConfig {
+  let s2m_server_config = entangle_modulator::ServerConfig {
+    listener: entangle_modulator::ListenerConfig {
+      network: entangle_modulator::TCP_NETWORK.to_string(),
       bind_address: "127.0.0.1:0".to_string(), // use a random port
       ..Default::default()
     },
-    limits: zyn_modulator::Limits {
+    limits: entangle_modulator::Limits {
       max_connections: 10,
       max_message_size: 256 * 1024,
       payload_pool_memory_budget: 512 * 1024,
@@ -141,5 +141,8 @@ pub fn default_s2m_config_with_secret(secret: &str) -> zyn_modulator::S2mServerC
     ..Default::default()
   };
 
-  zyn_modulator::S2mServerConfig { server: s2m_server_config, m2s_client: zyn_modulator::M2sClientConfig::default() }
+  entangle_modulator::S2mServerConfig {
+    server: s2m_server_config,
+    m2s_client: entangle_modulator::M2sClientConfig::default(),
+  }
 }

@@ -1,11 +1,11 @@
 [package]
-name = "zyn-benchmark"
+name = "entangle-benchmark"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 
 [[bin]]
-name = "zyn-bench"
+name = "entangle-bench"
 path = "src/main.rs"
 
 [dependencies]
@@ -27,6 +27,6 @@ rand = "0.9"
 futures = "0.3"
 
 # Internal dependencies
-zyn-client = { path = "../client" }
-zyn-protocol = { path = "../protocol" }
-zyn-util = { path = "../util" }
+entangle-client = { path = "../client" }
+entangle-protocol = { path = "../protocol" }
+entangle-util = { path = "../util" }

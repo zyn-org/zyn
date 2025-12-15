@@ -3,17 +3,17 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use zyn_common::client::SessionInfo;
-use zyn_common::service::{M2sService, S2mService};
-use zyn_protocol::{DEFAULT_MESSAGE_BUFFER_SIZE, M2sModDirectParameters, Message, S2mAuthParameters, request};
-use zyn_protocol::{
+use entangle_common::client::SessionInfo;
+use entangle_common::service::{M2sService, S2mService};
+use entangle_protocol::{DEFAULT_MESSAGE_BUFFER_SIZE, M2sModDirectParameters, Message, S2mAuthParameters, request};
+use entangle_protocol::{
   M2sConnectParameters, S2mConnectParameters, S2mForwardBroadcastPayloadParameters, S2mForwardEventParameters,
   S2mModDirectParameters,
 };
-use zyn_util::conn::{Dialer, Stream, TcpDialer, UnixDialer};
+use entangle_util::conn::{Dialer, Stream, TcpDialer, UnixDialer};
 
-use zyn_util::pool::{Pool, PoolBuffer};
-use zyn_util::string_atom::StringAtom;
+use entangle_util::pool::{Pool, PoolBuffer};
+use entangle_util::string_atom::StringAtom;
 
 use crate::config::{M2sClientConfig, S2mClientConfig, TCP_NETWORK, UNIX_NETWORK};
 use crate::modulator::{
@@ -35,7 +35,7 @@ struct M2sHandshaker {
 // === impl M2sHandshaker ===
 
 #[async_trait::async_trait]
-impl zyn_common::client::Handshaker<Stream> for M2sHandshaker {
+impl entangle_common::client::Handshaker<Stream> for M2sHandshaker {
   type SessionExtraInfo = M2sSessionExtraInfo;
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, M2sSessionExtraInfo)> {
@@ -69,7 +69,7 @@ impl zyn_common::client::Handshaker<Stream> for M2sHandshaker {
 
 #[derive(Clone, Debug)]
 pub struct M2sClient {
-  client: zyn_common::client::Client<Stream, M2sHandshaker, M2sService>,
+  client: entangle_common::client::Client<Stream, M2sHandshaker, M2sService>,
 }
 
 // === impl M2sClient ===
@@ -107,9 +107,9 @@ impl M2sClient {
 
     let handshaker = M2sHandshaker { shared_secret, heartbeat_interval: config.heartbeat_interval };
 
-    let client = zyn_common::client::Client::new(
+    let client = entangle_common::client::Client::new(
       "m2s:client",
-      zyn_common::client::Config {
+      entangle_common::client::Config {
         max_idle_connections: config.max_idle_connections,
         heartbeat_interval: config.heartbeat_interval,
         connect_timeout: config.connect_timeout,
@@ -212,7 +212,7 @@ struct S2mHandshaker {
 // === impl S2mHandshaker ===
 
 #[async_trait::async_trait]
-impl zyn_common::client::Handshaker<Stream> for S2mHandshaker {
+impl entangle_common::client::Handshaker<Stream> for S2mHandshaker {
   type SessionExtraInfo = S2mSessionExtraInfo;
 
   async fn handshake(&self, stream: &mut Stream) -> anyhow::Result<(SessionInfo, S2mSessionExtraInfo)> {
@@ -249,7 +249,7 @@ impl zyn_common::client::Handshaker<Stream> for S2mHandshaker {
 
 #[derive(Clone, Debug)]
 pub struct S2mClient {
-  client: zyn_common::client::Client<Stream, S2mHandshaker, S2mService>,
+  client: entangle_common::client::Client<Stream, S2mHandshaker, S2mService>,
 }
 
 // === impl S2mClient ===
@@ -293,9 +293,9 @@ impl S2mClient {
 
     let handshaker = S2mHandshaker { shared_secret, heartbeat_interval: config.heartbeat_interval };
 
-    let client = zyn_common::client::Client::new(
+    let client = entangle_common::client::Client::new(
       "s2m:client",
-      zyn_common::client::Config {
+      entangle_common::client::Config {
         max_idle_connections: config.max_idle_connections,
         heartbeat_interval: config.heartbeat_interval,
         connect_timeout: config.connect_timeout,

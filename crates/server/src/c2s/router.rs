@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use zyn_util::pool::PoolBuffer;
-use zyn_util::string_atom::StringAtom;
+use entangle_util::pool::PoolBuffer;
+use entangle_util::string_atom::StringAtom;
 
 use crate::transmitter::Transmitter;
 
@@ -81,7 +81,7 @@ impl Router {
   /// `Ok(())` if the routing was successful, or an error if routing failed
   pub fn route_to(
     &self,
-    msg: zyn_protocol::Message,
+    msg: entangle_protocol::Message,
     payload_opt: Option<PoolBuffer>,
     target: StringAtom,
     excluding_local_handler: Option<usize>,

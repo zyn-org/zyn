@@ -1,12 +1,12 @@
 [package]
-name = "zyn-server"
+name = "entangle-server"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 
 # Binary target for the main binary
 [[bin]]
-name = "zyn-server"
+name = "entangle"
 path = "bin/main.rs"
 
 [dependencies]
@@ -28,13 +28,13 @@ parking_lot = "0.12.5"
 rcgen = "0.14.0"
 rustls = "0.23.32"
 rustls-pemfile = "2.2.0"
-zyn-client = { path = "../client" }
-zyn-common = { path = "../common" }
-zyn-modulator = { path = "../modulator" }
-zyn-protocol = { path = "../protocol" }
-zyn-util = { path = "../util" }
+entangle-client = { path = "../client" }
+entangle-common = { path = "../common" }
+entangle-modulator = { path = "../modulator" }
+entangle-protocol = { path = "../protocol" }
+entangle-util = { path = "../util" }
 rlimit = "0.10.2"
 
 [dev-dependencies]
 pki-types = { package = "rustls-pki-types", version = "1" }
-zyn-test-util = { path = "../test-util" }
+entangle-test-util = { path = "../test-util" }

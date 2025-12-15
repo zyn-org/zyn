@@ -11,14 +11,14 @@ use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
-use zyn_modulator::config::S2mServerConfig;
-use zyn_modulator::modulator::{
+use entangle_modulator::config::S2mServerConfig;
+use entangle_modulator::modulator::{
   AuthRequest, AuthResponse, ForwardBroadcastPayloadRequest, ForwardBroadcastPayloadResponse,
   ForwardBroadcastPayloadResult, ForwardEventRequest, ForwardEventResponse, Operation, Operations,
   ReceivePrivatePayloadRequest, ReceivePrivatePayloadResponse, SendPrivatePayloadRequest, SendPrivatePayloadResponse,
 };
-use zyn_modulator::{create_s2m_listener, Modulator};
-use zyn_util::string_atom::StringAtom;
+use entangle_modulator::{create_s2m_listener, Modulator};
+use entangle_util::string_atom::StringAtom;
 
 const MODULATOR_PROTOCOL_NAME: &str = "broadcast-payload-json-validator/1.0";
 
@@ -36,7 +36,7 @@ const MODULATOR_PROTOCOL_NAME: &str = "broadcast-payload-json-validator/1.0";
 struct JsonPayloadValidator {}
 
 #[async_trait]
-impl zyn_modulator::Modulator for JsonPayloadValidator {
+impl entangle_modulator::Modulator for JsonPayloadValidator {
   /// Returns the unique name of this modulator.
   async fn protocol_name(&self) -> anyhow::Result<StringAtom> {
     Ok(MODULATOR_PROTOCOL_NAME.into())

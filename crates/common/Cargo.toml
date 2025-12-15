@@ -1,5 +1,5 @@
 [package]
-name = "zyn-common"
+name = "entangle-common"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
@@ -15,5 +15,5 @@ tokio-util = { version = "0.7.15", features = ["rt", "codec"] }
 tracing = "0.1.41"
 parking_lot = "0.12.5"
 rand = "0.9.1"
-zyn-protocol = { path = "../protocol" }
-zyn-util = { path = "../util" }
+entangle-protocol = { path = "../protocol" }
+entangle-util = { path = "../util" }

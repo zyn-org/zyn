@@ -4,7 +4,7 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use zyn_modulator::OutboundPrivatePayload;
+use entangle_modulator::OutboundPrivatePayload;
 
 mod config;
 mod listener;
@@ -17,10 +17,10 @@ pub use config::{Config, ListenerConfig};
 pub use listener::C2sListener;
 pub use router::Router;
 
-// Re-export C2sClient from zyn-client crate
-pub use zyn_client::{C2sClient, C2sSessionExtraInfo};
+// Re-export C2sClient from entangle-client crate
+pub use entangle_client::{C2sClient, C2sSessionExtraInfo};
 
-use zyn_protocol::{Message, ModDirectParameters};
+use entangle_protocol::{Message, ModDirectParameters};
 
 /// Routes private payloads from the modulator to connected clients.
 ///

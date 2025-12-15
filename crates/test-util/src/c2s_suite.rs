@@ -12,17 +12,17 @@ use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 use tokio_util::sync::CancellationToken;
 
-use zyn_modulator::client::S2mClient;
-use zyn_modulator::{Modulator, OutboundPrivatePayload};
-use zyn_protocol::{
+use entangle_modulator::client::S2mClient;
+use entangle_modulator::{Modulator, OutboundPrivatePayload};
+use entangle_protocol::{
   BroadcastParameters, ConnectParameters, IdentifyParameters, JoinChannelParameters, LeaveChannelParameters, Message,
   SetChannelAclParameters, SetChannelConfigurationParameters,
 };
-use zyn_server::c2s;
-use zyn_server::channel::ChannelManager;
-use zyn_server::notifier::Notifier;
-use zyn_server::router::GlobalRouter;
-use zyn_util::string_atom::StringAtom;
+use entangle_server::c2s;
+use entangle_server::channel::ChannelManager;
+use entangle_server::notifier::Notifier;
+use entangle_server::router::GlobalRouter;
+use entangle_util::string_atom::StringAtom;
 
 use crate::TestConn;
 
@@ -98,7 +98,7 @@ impl C2sSuite {
     })
     .expect("failed to create C2sDispatcherFactory");
 
-    let conn_cfg = zyn_common::conn::Config {
+    let conn_cfg = entangle_common::conn::Config {
       max_connections: arc_config.limits.max_connections,
       max_message_size: arc_config.limits.max_message_size,
       max_payload_size: arc_config.limits.max_payload_size,
@@ -166,7 +166,7 @@ impl C2sSuite {
 
     let max_message_size = self.config().limits.max_message_size as usize;
 
-    let pool = zyn_util::pool::Pool::new(1, max_message_size);
+    let pool = entangle_util::pool::Pool::new(1, max_message_size);
 
     let tls_socket = TestConn::new(tls_stream, pool.acquire_buffer().await, max_message_size);
 

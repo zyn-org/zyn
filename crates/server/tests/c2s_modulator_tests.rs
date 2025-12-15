@@ -6,21 +6,21 @@ use std::time::Duration;
 
 use tokio::sync::broadcast;
 
-use zyn_modulator::client::S2mClient;
-use zyn_modulator::config::S2mClientConfig;
-use zyn_modulator::create_s2m_listener;
-use zyn_modulator::modulator::{AuthResult, ForwardBroadcastPayloadResult};
-use zyn_modulator::{OutboundPrivatePayload, create_m2s_listener};
-use zyn_protocol::EventKind::{MemberJoined, MemberLeft};
-use zyn_protocol::{
+use entangle_modulator::client::S2mClient;
+use entangle_modulator::config::S2mClientConfig;
+use entangle_modulator::create_s2m_listener;
+use entangle_modulator::modulator::{AuthResult, ForwardBroadcastPayloadResult};
+use entangle_modulator::{OutboundPrivatePayload, create_m2s_listener};
+use entangle_protocol::EventKind::{MemberJoined, MemberLeft};
+use entangle_protocol::{
   AuthAckParameters, AuthParameters, BroadcastAckParameters, BroadcastParameters, ErrorParameters, EventParameters,
   MessageParameters, ModDirectParameters,
 };
-use zyn_protocol::{ConnectParameters, Message};
-use zyn_test_util::default_m2s_config;
-use zyn_test_util::{C2sSuite, TestModulator, assert_message, default_c2s_config, default_s2m_config};
-use zyn_util::pool::Pool;
-use zyn_util::string_atom::StringAtom;
+use entangle_protocol::{ConnectParameters, Message};
+use entangle_test_util::default_m2s_config;
+use entangle_test_util::{C2sSuite, TestModulator, assert_message, default_c2s_config, default_s2m_config};
+use entangle_util::pool::Pool;
+use entangle_util::string_atom::StringAtom;
 
 // Test usernames
 const TEST_USER_1: &str = "test_user_1";
@@ -180,8 +180,8 @@ async fn test_c2s_modulator_multi_step_auth() -> anyhow::Result<()> {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_c2s_modulator_send_private_payload() -> anyhow::Result<()> {
-  use zyn_modulator::modulator::SendPrivatePayloadResult;
-  use zyn_protocol::{ModDirectAckParameters, ModDirectParameters};
+  use entangle_modulator::modulator::SendPrivatePayloadResult;
+  use entangle_protocol::{ModDirectAckParameters, ModDirectParameters};
 
   // Create a modulator that validates private payloads - only accepts messages that contain "valid"
   let modulator = TestModulator::new().with_send_private_payload_handler(|payload, _from| async move {
@@ -248,7 +248,7 @@ async fn test_c2s_modulator_send_private_payload() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: zyn_protocol::ErrorReason::BadRequest.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::BadRequest.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -430,7 +430,7 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::Error,
-    ErrorParameters { id: Some(1), reason: zyn_protocol::ErrorReason::BadRequest.into(), detail: None }
+    ErrorParameters { id: Some(1), reason: entangle_protocol::ErrorReason::BadRequest.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -449,7 +449,7 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
       let reversed = payload_str.chars().rev().collect::<String>();
 
       // Create a new pool buffer with the reversed text
-      let pool = zyn_util::pool::Pool::new(1, 1024);
+      let pool = entangle_util::pool::Pool::new(1, 1024);
       let mut mut_pool_buffer = pool.acquire_buffer().await;
 
       let mut_buff_ptr = mut_pool_buffer.as_mut_slice();
@@ -531,8 +531,8 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
+  use entangle_protocol::Event;
   use tokio::sync::Mutex;
-  use zyn_protocol::Event;
 
   // Create a modulator that captures events and logs any calls
   let captured_events = Arc::new(Mutex::new(Vec::new()));
@@ -621,19 +621,19 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
   assert_eq!(events.len(), 3, "expected 3 events to be forwarded to the modulator");
 
   // Verify the first event (User 2 joined)
-  assert_eq!(events[0].kind, zyn_protocol::EventKind::MemberJoined);
+  assert_eq!(events[0].kind, entangle_protocol::EventKind::MemberJoined);
   assert_eq!(events[0].channel, Some(StringAtom::from("!1@localhost")));
   assert_eq!(events[0].zid, Some(StringAtom::from("test_user_2@localhost")));
   assert_eq!(events[0].owner, Some(false));
 
   // Verify the second event (User 3 joined)
-  assert_eq!(events[1].kind, zyn_protocol::EventKind::MemberJoined);
+  assert_eq!(events[1].kind, entangle_protocol::EventKind::MemberJoined);
   assert_eq!(events[1].channel, Some(StringAtom::from("!1@localhost")));
   assert_eq!(events[1].zid, Some(StringAtom::from("test_user_3@localhost")));
   assert_eq!(events[1].owner, Some(false));
 
   // Verify the third event (User 2 left)
-  assert_eq!(events[2].kind, zyn_protocol::EventKind::MemberLeft);
+  assert_eq!(events[2].kind, entangle_protocol::EventKind::MemberLeft);
   assert_eq!(events[2].channel, Some(StringAtom::from("!1@localhost")));
   assert_eq!(events[2].zid, Some(StringAtom::from("test_user_2@localhost")));
   assert_eq!(events[2].owner, Some(false));
@@ -668,12 +668,12 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   conn1.write_message(Message::Connect(ConnectParameters { protocol_version: 1, heartbeat_interval: 0 })).await?;
   let _ = conn1.read_message().await?; // CONNECT_ACK
 
-  conn1.write_message(Message::Auth(zyn_protocol::AuthParameters { token: StringAtom::from("token1") })).await?;
+  conn1.write_message(Message::Auth(entangle_protocol::AuthParameters { token: StringAtom::from("token1") })).await?;
 
   assert_message!(
     conn1.read_message().await?,
     Message::AuthAck,
-    zyn_protocol::AuthAckParameters {
+    entangle_protocol::AuthAckParameters {
       challenge: None,
       succeeded: Some(true),
       zid: Some(StringAtom::from("test_user_1@localhost"))
@@ -686,12 +686,12 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   conn2.write_message(Message::Connect(ConnectParameters { protocol_version: 1, heartbeat_interval: 0 })).await?;
   let _ = conn2.read_message().await?; // CONNECT_ACK
 
-  conn2.write_message(Message::Auth(zyn_protocol::AuthParameters { token: StringAtom::from("token2") })).await?;
+  conn2.write_message(Message::Auth(entangle_protocol::AuthParameters { token: StringAtom::from("token2") })).await?;
 
   assert_message!(
     conn2.read_message().await?,
     Message::AuthAck,
-    zyn_protocol::AuthAckParameters {
+    entangle_protocol::AuthAckParameters {
       challenge: None,
       succeeded: Some(true),
       zid: Some(StringAtom::from("test_user_1@localhost"))
@@ -700,7 +700,7 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
 
   // First connection joins a channel
   conn1
-    .write_message(Message::JoinChannel(zyn_protocol::JoinChannelParameters {
+    .write_message(Message::JoinChannel(entangle_protocol::JoinChannelParameters {
       id: 1234,
       channel: None,
       on_behalf: None,
@@ -724,7 +724,9 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
 
   // Second connection should still be able to list channels
   // and see that the user is still a member of the channel
-  conn2.write_message(Message::ListChannels(zyn_protocol::ListChannelsParameters { id: 5678, owner: false })).await?;
+  conn2
+    .write_message(Message::ListChannels(entangle_protocol::ListChannelsParameters { id: 5678, owner: false }))
+    .await?;
 
   let list_response = conn2.read_message().await?;
   assert!(

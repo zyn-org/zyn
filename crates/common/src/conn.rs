@@ -19,16 +19,16 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
-use zyn_protocol::ErrorReason::{
+use entangle_protocol::ErrorReason::{
   BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerShuttingDown, Timeout,
 };
-use zyn_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
+use entangle_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
 
-use zyn_util::codec::{StreamReader, StreamReaderError};
-use zyn_util::io::write_all_vectored;
-use zyn_util::pool::{BucketedPool, MutablePoolBuffer, Pool, PoolBuffer};
-use zyn_util::slab::{Slab, SlabRef};
-use zyn_util::string_atom::StringAtom;
+use entangle_util::codec::{StreamReader, StreamReaderError};
+use entangle_util::io::write_all_vectored;
+use entangle_util::pool::{BucketedPool, MutablePoolBuffer, Pool, PoolBuffer};
+use entangle_util::slab::{Slab, SlabRef};
+use entangle_util::string_atom::StringAtom;
 
 use crate::service::Service;
 
@@ -609,7 +609,7 @@ impl<D: Dispatcher> ConnInner<D> {
     });
     if inc_res.is_err() {
       return Err(
-        zyn_protocol::Error {
+        entangle_protocol::Error {
           id: None,
           reason: PolicyViolation,
           detail: Some(StringAtom::from("max inflight requests reached")),
@@ -766,7 +766,7 @@ impl<D: Dispatcher> ConnInner<D> {
   fn notify_error<ST: Service>(e: anyhow::Error, tx: ConnTx, handler: usize) -> anyhow::Result<()> {
     // Notify the client about the error, or disconnect the connection in case it's an internal
     // or non-recoverable error.
-    if let Some(conn_err) = e.downcast_ref::<zyn_protocol::Error>() {
+    if let Some(conn_err) = e.downcast_ref::<entangle_protocol::Error>() {
       if conn_err.is_recoverable() {
         tx.send_message(conn_err.into());
       } else {
@@ -926,7 +926,7 @@ impl<D: Dispatcher> ConnInner<D> {
                           },
                           Err(e) => {
                             let err_message: Message = {
-                                if let Some(e) = e.downcast_ref::<zyn_protocol::Error>() {
+                                if let Some(e) = e.downcast_ref::<entangle_protocol::Error>() {
                                     e.into()
                                 } else {
                                     warn!(handler = handler, service_type = ST::NAME, "failed to read payload: {}", e);
@@ -1164,7 +1164,7 @@ impl<D: Dispatcher> ConnInner<D> {
 
     // Verify it's actually a newline
     if cr[0] != b'\n' {
-      let mut error = zyn_protocol::Error::new(BadRequest).with_detail(StringAtom::from("invalid payload format"));
+      let mut error = entangle_protocol::Error::new(BadRequest).with_detail(StringAtom::from("invalid payload format"));
       if let Some(id) = correlation_id {
         error = error.with_id(id);
       }

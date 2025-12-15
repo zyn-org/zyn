@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use crate::{EventParameters, Message};
-use zyn_util::string_atom::StringAtom;
+use entangle_util::string_atom::StringAtom;
 
 /// Represents the type of event that occurred in the system.
 ///

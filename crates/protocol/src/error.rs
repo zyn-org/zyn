@@ -2,11 +2,11 @@
 
 use std::str::FromStr;
 
-use zyn_util::string_atom::StringAtom;
+use entangle_util::string_atom::StringAtom;
 
 use crate::{ErrorParameters, Message};
 
-/// Represents the various error reasons that can occur in the Zyn protocol.
+/// Represents the various error reasons that can occur in the Entangle protocol.
 ///
 /// `ErrorReason` is an enumeration of all possible error codes that can be
 /// returned by the protocol. Each variant corresponds to a specific error
