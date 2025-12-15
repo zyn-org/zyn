@@ -6,6 +6,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
+use entangle_client::c2s::{AuthMethod, C2sClient, C2sConfig};
+use entangle_protocol::QoS;
+use entangle_util::pool::Pool;
+use entangle_util::string_atom::StringAtom;
 use futures::StreamExt;
 use futures::future::join_all;
 use rand::prelude::*;
@@ -13,16 +17,12 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
-use zyn_client::c2s::{AuthMethod, C2sClient, C2sConfig};
-use zyn_protocol::QoS;
-use zyn_util::pool::Pool;
-use zyn_util::string_atom::StringAtom;
 
 /// Command line arguments
 #[derive(Parser, Debug)]
-#[command(name = "zyn-bench")]
+#[command(name = "entangle-bench")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Zyn performance benchmarking tool", long_about = None)]
+#[command(about = "Entangle performance benchmarking tool", long_about = None)]
 struct Cli {
   /// Server address to connect to
   #[arg(short, long, default_value = "127.0.0.1:22622")]
@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
 
   let cli = Cli::parse();
 
-  info!("starting zyn-bench");
+  info!("starting entangle-bench");
   info!("server: {}", cli.server);
   info!("producer(s): {}", cli.producers);
   info!("consumer(s): {}", cli.consumers);
@@ -165,8 +165,8 @@ async fn spawn_inbound_drainers(
             match msg {
               Some((message, _payload)) => {
                 match &message {
-                    zyn_protocol::Message::Error(err) => warn!("received error message: {:?}", err),
-                    zyn_protocol::Message::Message{ .. } => count += 1,
+                    entangle_protocol::Message::Error(err) => warn!("received error message: {:?}", err),
+                    entangle_protocol::Message::Message{ .. } => count += 1,
                     _ => {}
                 }
               },

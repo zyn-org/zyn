@@ -8,26 +8,29 @@ use async_trait::async_trait;
 use tokio::sync::Mutex;
 use tracing::{error, trace};
 
-use crate::c2s::{self, Config};
-use crate::channel::{ChannelAcl, ChannelConfig, ChannelManager};
-use crate::transmitter::{Resource, Transmitter};
-use zyn_common::conn::{ConnTx, State};
-use zyn_common::service::C2sService;
-use zyn_modulator::modulator::{
+use entangle_common::conn::{ConnTx, State};
+use entangle_common::service::C2sService;
+use entangle_modulator::modulator::{
   AuthRequest, AuthResult, ForwardBroadcastPayloadRequest, ForwardBroadcastPayloadResult, Modulator, Operation,
   SendPrivatePayloadRequest, SendPrivatePayloadResult,
 };
-use zyn_protocol::ErrorReason::{
+use entangle_protocol::ErrorReason::{
   BadRequest, InternalServerError, UnexpectedMessage, UnsupportedProtocolVersion, UsernameInUse,
 };
-use zyn_protocol::{AuthAckParameters, ConnectAckParameters, IdentifyAckParameters, Message, ModDirectAckParameters};
-use zyn_protocol::{ChannelId, Zid};
-use zyn_util::pool::PoolBuffer;
-use zyn_util::slab::{Slab, SlabRef};
-use zyn_util::string_atom::StringAtom;
+use entangle_protocol::{
+  AuthAckParameters, ConnectAckParameters, IdentifyAckParameters, Message, ModDirectAckParameters,
+};
+use entangle_protocol::{ChannelId, Zid};
+use entangle_util::pool::PoolBuffer;
+use entangle_util::slab::{Slab, SlabRef};
+use entangle_util::string_atom::StringAtom;
+
+use crate::c2s::{self, Config};
+use crate::channel::{ChannelAcl, ChannelConfig, ChannelManager};
+use crate::transmitter::{Resource, Transmitter};
 
 /// The C2S connection manager.
-pub type C2sConnManager = zyn_common::conn::ConnManager<C2sDispatcher, C2sDispatcherFactory, C2sService>;
+pub type C2sConnManager = entangle_common::conn::ConnManager<C2sDispatcher, C2sDispatcherFactory, C2sService>;
 
 #[derive(Clone)]
 /// A transmitter implementation for C2S connections.
@@ -100,7 +103,7 @@ impl C2sDispatcherFactory {
 }
 
 #[async_trait]
-impl zyn_common::conn::DispatcherFactory<C2sDispatcher> for C2sDispatcherFactory {
+impl entangle_common::conn::DispatcherFactory<C2sDispatcher> for C2sDispatcherFactory {
   async fn create(&mut self, handler: usize, tx: ConnTx) -> SlabRef<C2sDispatcher> {
     let mut inner = self.0.lock().await;
 
@@ -237,7 +240,7 @@ impl C2sDispatcherInner {
     match msg {
       Message::Connect(params) => {
         if params.protocol_version != 1 {
-          return Err(zyn_protocol::Error::new(UnsupportedProtocolVersion).into());
+          return Err(entangle_protocol::Error::new(UnsupportedProtocolVersion).into());
         }
 
         let mut heartbeat_interval = Duration::from_millis(params.heartbeat_interval as u64);
@@ -277,7 +280,7 @@ impl C2sDispatcherInner {
         );
       },
       _ => {
-        return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+        return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
       },
     }
     Ok(())
@@ -306,7 +309,7 @@ impl C2sDispatcherInner {
       Message::Auth(params) => {
         // If authentication is not required, reject the message.
         if !self.auth_required {
-          return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+          return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
         }
 
         match self.modulator.as_ref().unwrap().authenticate(AuthRequest { token: params.token }).await {
@@ -316,7 +319,7 @@ impl C2sDispatcherInner {
                 match self.make_local_zid(username.clone()) {
                   Ok(zid) => zid,
                   Err(e) => {
-                    return Err(zyn_protocol::Error::new(InternalServerError).with_detail(e.to_string()).into());
+                    return Err(entangle_protocol::Error::new(InternalServerError).with_detail(e.to_string()).into());
                   },
                 }
               };
@@ -360,13 +363,13 @@ impl C2sDispatcherInner {
               Ok(false)
             },
           },
-          Err(e) => Err(zyn_protocol::Error::new(InternalServerError).with_detail(e.to_string()).into()),
+          Err(e) => Err(entangle_protocol::Error::new(InternalServerError).with_detail(e.to_string()).into()),
         }
       },
       Message::Identify(params) => {
         // If authentication is required, reject the message.
         if self.auth_required {
-          return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+          return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
         }
 
         // Check if the username is already in use.
@@ -376,7 +379,7 @@ impl C2sDispatcherInner {
           match self.make_local_zid(username.into()) {
             Ok(zid) => zid,
             Err(e) => {
-              return Err(zyn_protocol::Error::new(BadRequest).with_detail(e.to_string()).into());
+              return Err(entangle_protocol::Error::new(BadRequest).with_detail(e.to_string()).into());
             },
           }
         };
@@ -390,7 +393,7 @@ impl C2sDispatcherInner {
         ) {
           self.zid = Some(zid);
         } else {
-          return Err(zyn_protocol::Error::new(UsernameInUse).into());
+          return Err(entangle_protocol::Error::new(UsernameInUse).into());
         }
 
         let zid = self.zid.as_ref().unwrap();
@@ -401,7 +404,7 @@ impl C2sDispatcherInner {
 
         Ok(true)
       },
-      _ => Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+      _ => Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
     }
   }
 
@@ -457,7 +460,7 @@ impl C2sDispatcherInner {
         self.dispatch_set_channel_configuration_message(msg).await?;
       },
       _ => {
-        return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+        return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
       },
     }
     Ok(())
@@ -512,7 +515,7 @@ impl C2sDispatcherInner {
             altered_payload = modified_payload;
           },
           ForwardBroadcastPayloadResult::Invalid => {
-            return Err(zyn_protocol::Error::new(BadRequest).with_id(correlation_id).into());
+            return Err(entangle_protocol::Error::new(BadRequest).with_id(correlation_id).into());
           },
         },
         Err(e) => {
@@ -523,7 +526,7 @@ impl C2sDispatcherInner {
             error = e.to_string(),
             "payload validation failed"
           );
-          return Err(zyn_protocol::Error::new(InternalServerError).with_id(correlation_id).into());
+          return Err(entangle_protocol::Error::new(InternalServerError).with_id(correlation_id).into());
         },
       }
     }
@@ -957,13 +960,13 @@ impl C2sDispatcherInner {
     let modulator = {
       match self.modulator.as_ref() {
         Some(modulator) => modulator,
-        None => return Err(zyn_protocol::Error::new(UnexpectedMessage).into()),
+        None => return Err(entangle_protocol::Error::new(UnexpectedMessage).into()),
       }
     };
 
     // Check if direct forwarding is supported.
     if !modulator.operations().await?.contains(Operation::SendPrivatePayload) {
-      return Err(zyn_protocol::Error::new(UnexpectedMessage).into());
+      return Err(entangle_protocol::Error::new(UnexpectedMessage).into());
     }
 
     let params = match msg {
@@ -974,7 +977,7 @@ impl C2sDispatcherInner {
     let correlation_id: u32 = {
       match params.id {
         Some(id) => id,
-        None => return Err(zyn_protocol::Error::new(BadRequest).into()),
+        None => return Err(entangle_protocol::Error::new(BadRequest).into()),
       }
     };
 
@@ -983,7 +986,7 @@ impl C2sDispatcherInner {
     let request = SendPrivatePayloadRequest { payload, from: zid.username.clone() };
     let response = modulator.send_private_payload(request).await?;
     if matches!(response.result, SendPrivatePayloadResult::Invalid) {
-      return Err(zyn_protocol::Error::new(BadRequest).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(BadRequest).with_id(correlation_id).into());
     }
     let transmitter = self.transmitter.clone();
 
@@ -1005,20 +1008,20 @@ impl C2sDispatcherInner {
   fn parse_channel_id(s: &str) -> anyhow::Result<ChannelId> {
     match ChannelId::from_str(s) {
       Ok(id) => Ok(id),
-      Err(e) => Err(zyn_protocol::Error::new(BadRequest).with_detail(e.to_string()).into()),
+      Err(e) => Err(entangle_protocol::Error::new(BadRequest).with_detail(e.to_string()).into()),
     }
   }
 
   fn parse_zid(s: &str) -> anyhow::Result<Zid> {
     match Zid::from_str(s) {
       Ok(zid) => Ok(zid),
-      Err(e) => Err(zyn_protocol::Error::new(BadRequest).with_detail(e.to_string()).into()),
+      Err(e) => Err(entangle_protocol::Error::new(BadRequest).with_detail(e.to_string()).into()),
     }
   }
 }
 
 #[async_trait]
-impl zyn_common::conn::Dispatcher for C2sDispatcher {
+impl entangle_common::conn::Dispatcher for C2sDispatcher {
   async fn dispatch_message(
     &mut self,
     msg: Message,

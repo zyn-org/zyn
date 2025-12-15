@@ -4,7 +4,7 @@ use std::io::{Cursor, Read, Seek};
 
 use crate::message::Message;
 
-use zyn_util::string_atom::StringAtom;
+use entangle_util::string_atom::StringAtom;
 
 const MALFORMED_ERR_MSG: &str = "malformed message";
 

@@ -16,8 +16,9 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
-use zyn_protocol::{Message, deserialize, serialize};
-use zyn_util::{codec::StreamReader, pool::MutablePoolBuffer};
+
+use entangle_protocol::{Message, deserialize, serialize};
+use entangle_util::{codec::StreamReader, pool::MutablePoolBuffer};
 
 /// A testing macro for asserting that a message matches an expected type and parameters.
 ///

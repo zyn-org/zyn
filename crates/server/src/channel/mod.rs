@@ -7,19 +7,20 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use tokio::sync::RwLock;
-use zyn_protocol::ErrorReason::{
+
+use entangle_protocol::ErrorReason::{
   BadRequest, ChannelIsFull, ChannelNotFound, Forbidden, NotAllowed, NotImplemented, PolicyViolation, UserInChannel,
   UserNotInChannel, UserNotRegistered,
 };
-use zyn_protocol::{
+use entangle_protocol::{
   BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters, JoinChannelAckParameters,
   LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message, MessageParameters, QoS,
 };
-use zyn_protocol::{ChannelId, Zid};
-use zyn_protocol::{Event, EventKind};
-use zyn_util::pool::PoolBuffer;
-use zyn_util::slab::Slab;
-use zyn_util::string_atom::StringAtom;
+use entangle_protocol::{ChannelId, Zid};
+use entangle_protocol::{Event, EventKind};
+use entangle_util::pool::PoolBuffer;
+use entangle_util::slab::Slab;
+use entangle_util::string_atom::StringAtom;
 
 use crate::notifier::Notifier;
 use crate::router::GlobalRouter;
@@ -58,7 +59,7 @@ impl ChannelManagerInner {
       && in_channels.len() >= self.max_channels_per_client as usize
     {
       return Err(
-        zyn_protocol::Error::new(PolicyViolation)
+        entangle_protocol::Error::new(PolicyViolation)
           .with_id(correlation_id)
           .with_detail("subscription limit reached")
           .into(),
@@ -70,7 +71,7 @@ impl ChannelManagerInner {
   fn validate_channel_configuration(&self, config: &ChannelConfig, correlation_id: u32) -> anyhow::Result<()> {
     if config.max_clients > self.max_clients_per_channel {
       return Err(
-        zyn_protocol::Error::new(BadRequest)
+        entangle_protocol::Error::new(BadRequest)
           .with_id(correlation_id)
           .with_detail("max_clients exceeds server established limit")
           .into(),
@@ -79,7 +80,7 @@ impl ChannelManagerInner {
 
     if config.max_payload_size > self.max_payload_size {
       return Err(
-        zyn_protocol::Error::new(BadRequest)
+        entangle_protocol::Error::new(BadRequest)
           .with_id(correlation_id)
           .with_detail("max_payload_size exceeds server established limit")
           .into(),
@@ -212,18 +213,18 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotImplemented).into());
+      return Err(entangle_protocol::Error::new(NotImplemented).into());
     }
 
     // Check if the channel exists and if the originating connection is a member of it.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let channel_guard = channel_ref.read().await;
 
     if !channel_guard.is_member(&zid) {
-      return Err(zyn_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
     // Gather all members of the channel and sort them.
     let mut members: Vec<StringAtom> = channel_guard.members.iter().map(|member_zid| member_zid.into()).collect();
@@ -268,7 +269,10 @@ impl ChannelManager {
 
     if channel_ref_opt.is_none() {
       return Err(
-        zyn_protocol::Error::new(PolicyViolation).with_id(correlation_id).with_detail("channel limit reached").into(),
+        entangle_protocol::Error::new(PolicyViolation)
+          .with_id(correlation_id)
+          .with_detail("channel limit reached")
+          .into(),
       );
     }
     let channel_ref = channel_ref_opt.unwrap();
@@ -336,13 +340,13 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
     // Check if the channel handler exists.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
     // Get the ZID of the new member.
@@ -351,11 +355,11 @@ impl ChannelManager {
         Some(oh_behalf_zid) => {
           // Ensure the client is authorized to join the channel on behalf of another user.
           if !channel_guard.is_owner(&zid) {
-            return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+            return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
 
           if !router.c2s_router().has_connection(&oh_behalf_zid.username) {
-            return Err(zyn_protocol::Error::new(UserNotRegistered).with_id(correlation_id).into());
+            return Err(entangle_protocol::Error::new(UserNotRegistered).with_id(correlation_id).into());
           }
 
           oh_behalf_zid.clone()
@@ -367,7 +371,7 @@ impl ChannelManager {
     let acl = &channel_guard.acl;
 
     if !acl.is_join_allowed(&new_member_zid) {
-      return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
     // Insert the member into the channel in case it is not already a member
@@ -375,9 +379,9 @@ impl ChannelManager {
     let config = &channel_guard.config;
 
     if channel_guard.is_member(&new_member_zid) {
-      return Err(zyn_protocol::Error::new(UserInChannel).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(UserInChannel).with_id(correlation_id).into());
     } else if channel_guard.member_count() >= config.max_clients as usize {
-      return Err(zyn_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
     }
     // Check if the maximum number of subscriptions is reached.
     mng_guard.check_subscription_limit(&new_member_zid.username, correlation_id)?;
@@ -437,20 +441,20 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
     // Check if the channel exists.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
     let left_member_zid = {
       match on_behalf_zid {
         Some(z) => {
           if !channel_guard.is_owner(&zid) {
-            return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+            return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
           z
         },
@@ -459,7 +463,7 @@ impl ChannelManager {
     };
 
     if !channel_guard.is_member(&left_member_zid) {
-      return Err(zyn_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
 
     // Notify members about the left member, and remove the member from the channel.
@@ -553,19 +557,19 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let channel_guard = channel_ref.read().await;
 
     // Only owner is allowed to get the channel ACL.
     if !channel_guard.is_owner(&zid) {
-      return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Obtain the channel's ACL.
@@ -617,19 +621,19 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
     // Only the owner of the channel can change its ACL.
     if !channel_guard.is_owner(&zid) {
-      return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Validate the new ACL.
@@ -645,7 +649,7 @@ impl ChannelManager {
 
     if !is_valid_acl {
       return Err(
-        zyn_protocol::Error::new(PolicyViolation)
+        entangle_protocol::Error::new(PolicyViolation)
           .with_id(correlation_id)
           .with_detail("ACL allow list exceeds max entries")
           .into(),
@@ -695,12 +699,12 @@ impl ChannelManager {
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let channel_guard = channel_ref.read().await;
 
     // Only members of the channel can get its configuration.
     if !channel_guard.is_member(&zid) {
-      return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Obtain the channel configuration.
@@ -746,7 +750,7 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
     // Validate the new channel configuration
     mng_guard.validate_channel_configuration(&config, correlation_id)?;
@@ -755,12 +759,12 @@ impl ChannelManager {
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
     // Only the owner of the channel can change its configuration.
     if !channel_guard.is_owner(&zid) {
-      return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Merge the current configuration with the new one.
     let new_config = channel_guard.merge_config(&config);
@@ -807,25 +811,25 @@ impl ChannelManager {
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
-      return Err(zyn_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
 
     // Check if the channel exists.
     let channel_ref = channels
       .ref_from_handler(channel_id.handler as usize)
       .await
-      .ok_or(zyn_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+      .ok_or(entangle_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
 
     let channel_guard = channel_ref.read().await;
 
     if !channel_guard.is_member(&zid) {
-      return Err(zyn_protocol::Error::new(Forbidden).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Check if the member is allowed to publish to the channel.
     let acl = &channel_guard.acl;
 
     if !acl.is_publish_allowed(&zid) {
-      return Err(zyn_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
+      return Err(entangle_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
     let max_payload_size = channel_guard.config.max_payload_size;
 
@@ -837,7 +841,7 @@ impl ChannelManager {
 
     if payload_length > max_payload_size {
       return Err(
-        zyn_protocol::Error::new(PolicyViolation)
+        entangle_protocol::Error::new(PolicyViolation)
           .with_id(correlation_id)
           .with_detail("payload size exceeds channel limit")
           .into(),

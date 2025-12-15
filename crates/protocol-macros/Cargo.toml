@@ -1,5 +1,5 @@
 [package]
-name = "zyn-protocol-macros"
+name = "entangle-protocol-macros"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"

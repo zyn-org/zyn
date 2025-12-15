@@ -3,23 +3,24 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::c2s::config::ListenerConfig;
-use crate::util::tls::{create_tls_config, generate_self_signed_cert};
-use crate::{c2s, util};
-
 use anyhow::anyhow;
 use rustls::ServerConfig;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
-use zyn_common::service::{C2sService, Service};
+
+use entangle_common::service::{C2sService, Service};
+
+use crate::c2s::config::ListenerConfig;
+use crate::util::tls::{create_tls_config, generate_self_signed_cert};
+use crate::{c2s, util};
 
 const LOCALHOST_DOMAIN: &str = "localhost";
 
 /// The C2S connection manager.
 type C2sConnManager =
-  zyn_common::conn::ConnManager<c2s::conn::C2sDispatcher, c2s::conn::C2sDispatcherFactory, C2sService>;
+  entangle_common::conn::ConnManager<c2s::conn::C2sDispatcher, c2s::conn::C2sDispatcherFactory, C2sService>;
 
 /// A TLS-enabled TCP listener for client-to-server (C2S) connections.
 ///

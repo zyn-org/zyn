@@ -9,8 +9,9 @@ use tokio::net::{TcpListener, UnixListener};
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, warn};
-use zyn_common::service::{M2sService, S2mService, Service};
-use zyn_util::conn::Stream;
+
+use entangle_common::service::{M2sService, S2mService, Service};
+use entangle_util::conn::Stream;
 
 use crate::config::*;
 use crate::conn::{M2sConnManager, S2mConnManager};
@@ -52,10 +53,10 @@ where
   }
 }
 
-impl<D, DF, ST> Listener<zyn_common::conn::ConnManager<D, DF, ST>, ST>
+impl<D, DF, ST> Listener<entangle_common::conn::ConnManager<D, DF, ST>, ST>
 where
-  D: zyn_common::conn::Dispatcher,
-  DF: zyn_common::conn::DispatcherFactory<D>,
+  D: entangle_common::conn::Dispatcher,
+  DF: entangle_common::conn::DispatcherFactory<D>,
   ST: Service,
 {
   /// Starts the listener.
@@ -89,7 +90,7 @@ where
 
   async fn listen_tcp(
     &mut self,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
     mut done_rx: Receiver<()>,
   ) -> anyhow::Result<()> {
     let config = self.config.clone();
@@ -129,7 +130,7 @@ where
 
   async fn listen_unix(
     &self,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
     mut done_rx: Receiver<()>,
   ) -> anyhow::Result<()> {
     let config = self.config.clone();
@@ -214,7 +215,7 @@ where
 
   async fn accept_tcp_connection(
     listener: &mut TcpListener,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
   ) -> anyhow::Result<()> {
     let (tcp_stream, addr) = listener.accept().await?;
 
@@ -239,7 +240,7 @@ where
 
   async fn accept_unix_connection(
     listener: &mut UnixListener,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
   ) -> anyhow::Result<()> {
     let (unix_stream, _) = listener.accept().await?;
 
@@ -259,7 +260,7 @@ where
 
   async fn handle_tcp_connection(
     tcp_stream: tokio::net::TcpStream,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
   ) -> anyhow::Result<()> {
     conn_mng.run(Stream::Tcp(tcp_stream)).await?;
 
@@ -268,7 +269,7 @@ where
 
   async fn handle_unix_connection(
     unix_stream: tokio::net::UnixStream,
-    conn_mng: zyn_common::conn::ConnManager<D, DF, ST>,
+    conn_mng: entangle_common::conn::ConnManager<D, DF, ST>,
   ) -> anyhow::Result<()> {
     conn_mng.run(Stream::Unix(unix_stream)).await?;
 

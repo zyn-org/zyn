@@ -6,7 +6,7 @@ use std::str::FromStr;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use zyn_util::string_atom::StringAtom;
+use entangle_util::string_atom::StringAtom;
 
 /// The maximum length of a username.
 const USERNAME_MAX_LENGTH: usize = 256;

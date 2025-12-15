@@ -301,9 +301,9 @@ impl Default for Limits {
   }
 }
 
-impl From<&ServerConfig> for zyn_common::conn::Config {
+impl From<&ServerConfig> for entangle_common::conn::Config {
   fn from(config: &ServerConfig) -> Self {
-    zyn_common::conn::Config {
+    entangle_common::conn::Config {
       max_connections: config.limits.max_connections,
       max_message_size: config.limits.max_message_size,
       max_payload_size: config.limits.max_payload_size,

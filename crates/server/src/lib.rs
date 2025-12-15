@@ -27,7 +27,7 @@ use tokio_tracing::info;
 use tokio_util::sync::CancellationToken;
 use tracing as tokio_tracing;
 
-use zyn_util::string_atom::StringAtom;
+use entangle_util::string_atom::StringAtom;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Config {
@@ -38,12 +38,12 @@ struct Config {
   c2s_server: c2s::Config,
 
   #[serde(default)]
-  modulator: zyn_modulator::Config,
+  modulator: entangle_modulator::Config,
 }
 
-/// Runs the zyn server with the specified number of worker threads.
+/// Runs the entangle server with the specified number of worker threads.
 ///
-/// This is the main entry point for the zyn server.
+/// This is the main entry point for the entangle server.
 ///
 /// # Arguments
 ///
@@ -65,7 +65,7 @@ pub async fn run(config_file: Option<String>, worker_threads: usize) -> anyhow::
     worker_threads = worker_threads,
     branch = GIT_BRANCH_NAME,
     commit = GIT_COMMIT_HASH,
-    "🚀 zyn server is starting..."
+    "🚀 entangle server is starting..."
   );
 
   // Set file descriptor limit based on configuration.
@@ -74,7 +74,7 @@ pub async fn run(config_file: Option<String>, worker_threads: usize) -> anyhow::
   set_file_descriptor_limit(max_connections)?;
 
   // Initialize the modulator.
-  let mut modulator_service = zyn_modulator::init_modulator(
+  let mut modulator_service = entangle_modulator::init_modulator(
     cfg.modulator.clone(),
     cfg.c2s_server.limits.max_message_size,
     cfg.c2s_server.limits.max_payload_size,
@@ -158,8 +158,8 @@ pub fn setup_panic_hook() {
     eprintln!("\n===========================================================");
     eprintln!("                😱 Oops! something went wrong                ");
     eprintln!("===========================================================\n");
-    eprintln!("Zyn server has panicked. This is a bug. Please report this");
-    eprintln!("at https://github.com/ortuman/zyn/issues/new.");
+    eprintln!("Entangle server has panicked. This is a bug. Please report this");
+    eprintln!("at https://github.com/entangle-org/entangle/issues/new.");
     eprintln!("If you can reliably reproduce this panic, include the");
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");

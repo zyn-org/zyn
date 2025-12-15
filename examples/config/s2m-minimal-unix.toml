@@ -8,7 +8,7 @@
 # S2M server configuration.
 [server.listener]
 network = "unix"
-socket_path = "/tmp/zyn-s2m-server.sock"
+socket_path = "/tmp/entangle-s2m-server.sock"
 
 # M2S client configuration.
 #
@@ -16,4 +16,4 @@ socket_path = "/tmp/zyn-s2m-server.sock"
 # When present, the S2M server will connect to the M2S client via Unix domain socket.
 [m2s-client]
 network = "unix"
-socket_path = "/tmp/zyn-m2s-server.sock"
+socket_path = "/tmp/entangle-m2s-server.sock"

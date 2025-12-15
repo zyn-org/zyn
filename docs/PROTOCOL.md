@@ -1,4 +1,4 @@
-# Zyn - Protocol Specification
+# Entangle - Protocol Specification
 
 ## Table of Contents
 
@@ -65,19 +65,19 @@
 
 ## Overview
 
-The Zyn protocol is designed for scalable pub/sub communication. It provides a low-level messaging infrastructure that can be extended with a custom application protocol through a **modulator**.
+The Entangle protocol is designed for scalable pub/sub communication. It provides a low-level messaging infrastructure that can be extended with a custom application protocol through a **modulator**.
 
 The protocol supports three types of connections:
 
-1. **Client-to-Server (C2S)**: End-user clients connecting to the Zyn server
+1. **Client-to-Server (C2S)**: End-user clients connecting to the Entangle server
 2. **Server-to-Modulator (S2M)**: Server-initiated connection to the modulator for delegating application-specific operations
 3. **Modulator-to-Server (M2S)**: Modulator-initiated connection for sending direct messages to clients
 
 ### What is a Modulator?
 
-A modulator is an external service that implements a custom application protocol on top of Zyn's messaging layer. Rather than embedding application logic in the server, Zyn delegates these concerns to a single modulator, keeping the core server lightweight and focused on message routing.
+A modulator is an external service that implements a custom application protocol on top of Entangle's messaging layer. Rather than embedding application logic in the server, Entangle delegates these concerns to a single modulator, keeping the core server lightweight and focused on message routing.
 
-**Important**: Each Zyn server instance connects to exactly **one modulator**. This design ensures consistent application protocol semantics and simplifies the architecture.
+**Important**: Each Entangle server instance connects to exactly **one modulator**. This design ensures consistent application protocol semantics and simplifies the architecture.
 
 **Common Use Cases:**
 
@@ -86,14 +86,14 @@ A modulator is an external service that implements a custom application protocol
 - **Content Validation**: Enforce message schemas, size limits, or content policies
 - **Message Transformation**: Encrypt, compress, or enrich messages before delivery
 - **Business Logic**: Implement game logic, chat moderation, presence systems, or any application-specific features
-- **Integration**: Bridge Zyn with external services, databases, or APIs
+- **Integration**: Bridge Entangle with external services, databases, or APIs
 - **Analytics**: Track user behavior, message patterns, or system metrics
 
-The modulator operates independently and can be written in any language, scaled separately, and updated without affecting the core Zyn server.
+The modulator operates independently and can be written in any language, scaled separately, and updated without affecting the core Entangle server.
 
 ### Why a custom protocol?
 
-Zyn implements a custom TCP-based protocol rather than leveraging existing protocols like HTTP or MQTT. This decision was made deliberately to optimize for the specific requirements of real-time pub/sub messaging while maintaining simplicity and flexibility.
+Entangle implements a custom TCP-based protocol rather than leveraging existing protocols like HTTP or MQTT. This decision was made deliberately to optimize for the specific requirements of real-time pub/sub messaging while maintaining simplicity and flexibility.
 
 **Key Design Rationale:**
 
@@ -115,7 +115,7 @@ Zyn implements a custom TCP-based protocol rather than leveraging existing proto
 
 ### Network
 
-Zyn uses a hybrid protocol over TCP with text-based message framing and binary payloads. The protocol defines all messages as request-response pairs or server-initiated notifications. Message headers are newline-delimited text consisting of a message name followed by space-separated parameters. Messages that include payloads (indicated by a `length` parameter) are followed by binary data.
+Entangle uses a hybrid protocol over TCP with text-based message framing and binary payloads. The protocol defines all messages as request-response pairs or server-initiated notifications. Message headers are newline-delimited text consisting of a message name followed by space-separated parameters. Messages that include payloads (indicated by a `length` parameter) are followed by binary data.
 
 The client initiates a socket connection and then writes a sequence of request messages and reads back the corresponding response messages. A handshake is required upon connection to establish protocol parameters and capabilities.
 
@@ -125,14 +125,14 @@ The server has a configurable maximum limit on message size (`max_message_size`)
 
 **Transport Layer Requirements:**
 
-- **TCP**: All Zyn connections use TCP for reliable, ordered delivery
+- **TCP**: All Entangle connections use TCP for reliable, ordered delivery
 - **TLS**: Mandatory for client-to-server (C2S) connections to protect authentication tokens and message content. For modulator connections (M2S/S2M), plain TCP or Unix domain sockets are supported
 - **Port**: Configurable, but clients must know the server's port to connect
 - **Encoding**: Messages use UTF-8 text encoding for parameters, with binary payloads transmitted as opaque byte sequences
 
 ### Connection Management
 
-Zyn supports three types of connections, each with its own lifecycle:
+Entangle supports three types of connections, each with its own lifecycle:
 
 **Client-To-Server Connections (C2S)**:
 - Initiated by clients using [CONNECT](#connect)
@@ -154,7 +154,7 @@ Zyn supports three types of connections, each with its own lifecycle:
 
 **Connection Persistence:**
 
-Zyn is designed for persistent connections. Clients and modulators should:
+Entangle is designed for persistent connections. Clients and modulators should:
 - Maintain long-lived TCP connections rather than connecting per-request
 - Implement reconnection logic with exponential backoff for transient failures
 - Send periodic heartbeats at the negotiated `heartbeat_interval` to detect dead connections
@@ -172,7 +172,7 @@ The server enforces the following limits, communicated during connection establi
 
 **Request-Response Ordering:**
 
-The Zyn protocol guarantees that messages on a single TCP connection are processed in the order they are received. However, the protocol supports request pipelining through correlation IDs:
+The Entangle protocol guarantees that messages on a single TCP connection are processed in the order they are received. However, the protocol supports request pipelining through correlation IDs:
 
 - Clients can send multiple requests without waiting for responses
 - Each request that expects a response includes an `id` parameter (u32, 1-4294967295)
@@ -207,7 +207,7 @@ Both clients and modulators must implement heartbeat to detect dead connections:
 
 ### Versioning and Compatibility
 
-The Zyn protocol is designed to enable incremental evolution in a backward-compatible fashion. Versioning is done at the connection level, with each connection negotiating a protocol version during the initial handshake.
+The Entangle protocol is designed to enable incremental evolution in a backward-compatible fashion. Versioning is done at the connection level, with each connection negotiating a protocol version during the initial handshake.
 
 **Version Negotiation:**
 
@@ -252,7 +252,7 @@ Version mismatches and unsupported features result in errors:
 
 ### Identifiers
 
-#### ZID (Zyn ID)
+#### ZID (Entangle ID)
 
 A ZID is a unique identifier for users and servers in the format `username@domain`.
 
@@ -275,7 +275,7 @@ A ChannelId identifies a communication channel in the format `!handler@domain`.
 
 ### Message Structure
 
-Messages in the Zyn protocol follow a text-based format:
+Messages in the Entangle protocol follow a text-based format:
 
 ```
 MESSAGE_NAME param1=value1 param2=value2 param3:2=value1,value2
@@ -316,7 +316,7 @@ MESSAGE_NAME param1=value1 param2=value2 param3:2=value1,value2
 
 ### CONNECT
 
-Initiates a connection to the Zyn server.
+Initiates a connection to the Entangle server.
 
 **Direction**: Client → Server
 
@@ -1060,7 +1060,7 @@ Initiates the modulator connection to the server. Used when the modulator connec
 M2S_CONNECT version=1 secret=modulator-secret-key heartbeat_interval=30000
 ```
 
-**Note**: Only one modulator can be connected to a Zyn server at a time.
+**Note**: Only one modulator can be connected to a Entangle server at a time.
 
 ---
 
@@ -1332,11 +1332,11 @@ The payload immediately follows the message parameters without any additional fr
 
 ### Application Protocol Integration
 
-- A single modulator provides the custom application protocol layer on top of Zyn's messaging infrastructure
+- A single modulator provides the custom application protocol layer on top of Entangle's messaging infrastructure
 - The [S2M_FORWARD_BROADCAST_PAYLOAD](#s2m_forward_broadcast_payload) flow allows payload validation, transformation, or enrichment
 - [MOD_DIRECT](#mod_direct) / [M2S_MOD_DIRECT](#m2s_mod_direct) / [S2M_MOD_DIRECT](#s2m_mod_direct) enable bidirectional application-specific communication
 - The modulator can implement custom authorization, content policies, message routing, or any other application logic
-- Each Zyn server connects to exactly one modulator, ensuring consistent application semantics across all clients
+- Each Entangle server connects to exactly one modulator, ensuring consistent application semantics across all clients
 
 ## Implementation Notes
 
@@ -1372,4 +1372,4 @@ Messages that expect responses use an `id` parameter for correlation:
 
 ## License
 
-This protocol is part of the Zyn project and is licensed under AGPL-3.0.
+This protocol is part of the Entangle project and is licensed under AGPL-3.0.

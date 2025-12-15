@@ -16,14 +16,14 @@ use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 
-use zyn_modulator::config::S2mServerConfig;
-use zyn_modulator::modulator::{
+use entangle_modulator::config::S2mServerConfig;
+use entangle_modulator::modulator::{
   AuthRequest, AuthResponse, ForwardBroadcastPayloadRequest, ForwardBroadcastPayloadResponse, ForwardEventRequest,
   ForwardEventResponse, Operation, Operations, OutboundPrivatePayload, ReceivePrivatePayloadRequest,
   ReceivePrivatePayloadResponse, SendPrivatePayloadRequest, SendPrivatePayloadResponse,
 };
-use zyn_modulator::{create_s2m_listener, Modulator};
-use zyn_util::string_atom::StringAtom;
+use entangle_modulator::{create_s2m_listener, Modulator};
+use entangle_util::string_atom::StringAtom;
 
 const MODULATOR_PROTOCOL_NAME: &str = "private-payload-sender/1.0";
 
@@ -33,7 +33,7 @@ struct PrivatePayloadSender {
 }
 
 #[async_trait]
-impl zyn_modulator::Modulator for PrivatePayloadSender {
+impl entangle_modulator::Modulator for PrivatePayloadSender {
   /// Returns the unique name of this modulator.
   async fn protocol_name(&self) -> anyhow::Result<StringAtom> {
     Ok(MODULATOR_PROTOCOL_NAME.into())
@@ -100,7 +100,7 @@ impl zyn_modulator::Modulator for PrivatePayloadSender {
     let (sender, receiver) = broadcast::channel(100);
 
     // Create a new pool buffer with the reversed text
-    let pool = zyn_util::pool::Pool::new(1, 4096);
+    let pool = entangle_util::pool::Pool::new(1, 4096);
 
     // Spawn a task to send payloads every 5 seconds
     tokio::spawn(async move {
