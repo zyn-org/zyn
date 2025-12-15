@@ -1,8 +1,8 @@
 # Entangle
 
-[![CI](https://img.shields.io/github/actions/workflow/status/entangle-org/entangle/ci.yaml?branch=main)](https://github.com/entangle-org/entangle/actions)
-[![Releases](https://img.shields.io/github/v/release/entangle-org/entangle?include_prereleases)](https://github.com/entangle-org/entangle/releases)
-[![LICENSE](https://img.shields.io/github/license/entangle-org/entangle)](https://github.com/entangle-org/entangle/blob/master/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/entangle-io/entangle/ci.yaml?branch=main)](https://github.com/entangle-io/entangle/actions)
+[![Releases](https://img.shields.io/github/v/release/entangle-io/entangle?include_prereleases)](https://github.com/entangle-io/entangle/releases)
+[![LICENSE](https://img.shields.io/github/license/entangle-io/entangle)](https://github.com/entangle-io/entangle/blob/master/LICENSE)
 
 An extensible messaging server built for real-time pub/sub communication.
 
@@ -31,7 +31,7 @@ https://github.com/user-attachments/assets/34baf7d3-4cfa-440d-a6e4-89cb94e922d3
 #### Building from Source
 
 ```bash
-git clone https://github.com/entangle-org/entangle.git
+git clone https://github.com/entangle-io/entangle.git
 cd entangle
 cargo build --release
 ```
@@ -203,5 +203,5 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ## Community
 
-- **Issues**: [GitHub Issues](https://github.com/entangle-org/entangle/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/entangle-org/entangle/discussions)
+- **Issues**: [GitHub Issues](https://github.com/entangle-io/entangle/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/entangle-io/entangle/discussions)

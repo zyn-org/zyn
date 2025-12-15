@@ -159,7 +159,7 @@ pub fn setup_panic_hook() {
     eprintln!("                😱 Oops! something went wrong                ");
     eprintln!("===========================================================\n");
     eprintln!("Entangle server has panicked. This is a bug. Please report this");
-    eprintln!("at https://github.com/entangle-org/entangle/issues/new.");
+    eprintln!("at https://github.com/entangle-io/entangle/issues/new.");
     eprintln!("If you can reliably reproduce this panic, include the");
     eprintln!("reproduction steps and re-run with the RUST_BACKTRACE=1 env");
     eprintln!("var set and include the backtrace in your report.");

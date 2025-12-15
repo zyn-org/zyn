@@ -39,7 +39,7 @@ There are many ways to contribute to Entangle:
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/entangle-org/entangle.git
+git clone https://github.com/entangle-io/entangle.git
 cd entangle
 ```
 
