@@ -1,8 +1,9 @@
+# Narwhal: An extensible pub/sub messaging server for the edge
+
 <div align="center">
   <img src="./.github/images/narwhal1.png"
        alt="walrus"
        width="25%">
-    <div>Narwhal: An extensible pub/sub messaging server for the edge</div>
 
 [![CI](https://img.shields.io/github/actions/workflow/status/narwhal-io/narwhal/ci.yaml?branch=main)](https://github.com/narwhal-io/narwhal/actions)
 [![Releases](https://img.shields.io/github/v/release/narwhal-io/narwhal?include_prereleases)](https://github.com/narwhal-io/narwhal/releases)
