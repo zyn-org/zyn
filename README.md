@@ -1,4 +1,4 @@
-<div align="center"><strong>Narwhal: An extensible pub/sub messaging server</strong></div>
+<div align="center"><strong>Narwhal: An extensible pub/sub messaging server for edge applications</strong></div>
 <div align="center">
   <img src="./.github/images/narwhal1.png"
        alt="walrus"
@@ -12,7 +12,7 @@
 
 ## Features
 
-- **Lightweight & Efficient**: Optimized architecture suitable for diverse deployments from cloud to edge
+- **Built for Edge Applications**: Specifically designed for mobile, desktop, and IoT client applications
 - **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
 - **Modular Architecture**: Extend the server with custom application logic via an external modulator
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
