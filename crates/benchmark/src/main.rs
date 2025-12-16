@@ -6,12 +6,13 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
-use entangle_client::c2s::{AuthMethod, C2sClient, C2sConfig};
-use entangle_protocol::QoS;
-use entangle_util::pool::Pool;
-use entangle_util::string_atom::StringAtom;
 use futures::StreamExt;
 use futures::future::join_all;
+
+use narwhal_client::c2s::{AuthMethod, C2sClient, C2sConfig};
+use narwhal_protocol::QoS;
+use narwhal_util::pool::Pool;
+use narwhal_util::string_atom::StringAtom;
 use rand::prelude::*;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
@@ -20,9 +21,9 @@ use tracing::{error, info, warn};
 
 /// Command line arguments
 #[derive(Parser, Debug)]
-#[command(name = "entangle-bench")]
+#[command(name = "narwhal-bench")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "Entangle performance benchmarking tool", long_about = None)]
+#[command(about = "Narwhal performance benchmarking tool", long_about = None)]
 struct Cli {
   /// Server address to connect to
   #[arg(short, long, default_value = "127.0.0.1:22622")]
@@ -72,7 +73,7 @@ async fn main() -> Result<()> {
 
   let cli = Cli::parse();
 
-  info!("starting entangle-bench");
+  info!("starting narwhal-bench");
   info!("server: {}", cli.server);
   info!("producer(s): {}", cli.producers);
   info!("consumer(s): {}", cli.consumers);
@@ -165,8 +166,8 @@ async fn spawn_inbound_drainers(
             match msg {
               Some((message, _payload)) => {
                 match &message {
-                    entangle_protocol::Message::Error(err) => warn!("received error message: {:?}", err),
-                    entangle_protocol::Message::Message{ .. } => count += 1,
+                    narwhal_protocol::Message::Error(err) => warn!("received error message: {:?}", err),
+                    narwhal_protocol::Message::Message{ .. } => count += 1,
                     _ => {}
                 }
               },

@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use entangle_protocol::{ErrorParameters, Message};
-use entangle_test_util::{M2sSuite, assert_message, default_m2s_config};
-use entangle_util::string_atom::StringAtom;
+use narwhal_protocol::{ErrorParameters, Message};
+use narwhal_test_util::{M2sSuite, assert_message, default_m2s_config};
+use narwhal_util::string_atom::StringAtom;
 
 #[tokio::test]
 async fn test_m2s_connect_timeout() -> anyhow::Result<()> {
@@ -27,7 +27,7 @@ async fn test_m2s_connect_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("connection timeout")),
     }
   );
@@ -65,7 +65,7 @@ async fn test_m2s_ping_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("ping timeout")),
     }
   );
@@ -102,7 +102,7 @@ async fn test_m2s_max_connection_limit_reached() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::ServerOverloaded.into(),
+      reason: narwhal_protocol::ErrorReason::ServerOverloaded.into(),
       detail: Some(StringAtom::from("max connections reached")),
     }
   );
@@ -141,7 +141,7 @@ async fn test_m2s_max_message_size_exceeded() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::PolicyViolation.into(),
+      reason: narwhal_protocol::ErrorReason::PolicyViolation.into(),
       detail: Some(StringAtom::from("max message size exceeded")),
     }
   );
@@ -167,7 +167,7 @@ async fn test_m2s_mod_direct_message() -> anyhow::Result<()> {
 
   // Send M2S_MOD_DIRECT message through the connection
   conn
-    .write_message(entangle_protocol::Message::M2sModDirect(entangle_protocol::M2sModDirectParameters {
+    .write_message(narwhal_protocol::Message::M2sModDirect(narwhal_protocol::M2sModDirectParameters {
       id: 42,
       targets: vec![StringAtom::from("user1@localhost"), StringAtom::from("user2@localhost")],
       length: PAYLOAD.len() as u32,
@@ -181,8 +181,8 @@ async fn test_m2s_mod_direct_message() -> anyhow::Result<()> {
   // Verify the server sends acknowledgment
   assert_message!(
     conn.read_message().await?,
-    entangle_protocol::Message::M2sModDirectAck,
-    entangle_protocol::M2sModDirectAckParameters { id: 42 }
+    narwhal_protocol::Message::M2sModDirectAck,
+    narwhal_protocol::M2sModDirectAckParameters { id: 42 }
   );
 
   // Verify the payload was broadcast to the channel

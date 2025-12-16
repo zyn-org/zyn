@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! # Entangle Client Library
+//! # Narwhal Client Library
 //!
-//! This crate provides client implementations for connecting to Entangle servers.
+//! This crate provides client implementations for connecting to Narwhal servers.
 //!
 //! ## Client Types
 //!
-//! - **C2S (Client-to-Server)**: End-user clients connecting to the Entangle server
+//! - **C2S (Client-to-Server)**: End-user clients connecting to the Narwhal server
 //!
 //! ## Other Client Types
 //!
-//! The following client types remain in the `entangle-modulator` crate because they are
+//! The following client types remain in the `narwhal-modulator` crate because they are
 //! tightly coupled with modulator functionality:
 //!
 //! - **S2M (Server-to-Modulator)**: Server-initiated connections to modulators
@@ -19,14 +19,14 @@
 //! If you need S2M or M2S client functionality, use:
 //!
 //! ```ignore
-//! use entangle_modulator::client::{S2mClient, M2sClient};
+//! use narwhal_modulator::client::{S2mClient, M2sClient};
 //! ```
 //!
 //! ## Example
 //!
 //! ```ignore
-//! use entangle_client::C2sClient;
-//! use entangle_common::client::Config;
+//! use narwhal_client::C2sClient;
+//! use narwhal_common::client::Config;
 //!
 //! # async fn example() -> anyhow::Result<()> {
 //! // Create a config with your desired settings

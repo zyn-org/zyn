@@ -3,14 +3,14 @@
 use std::io::Write;
 use std::time::Duration;
 
-use entangle_modulator::modulator::{AuthResult, ForwardBroadcastPayloadResult, SendPrivatePayloadResult};
-use entangle_protocol::{
+use narwhal_modulator::modulator::{AuthResult, ForwardBroadcastPayloadResult, SendPrivatePayloadResult};
+use narwhal_protocol::{
   ErrorParameters, EventKind, Message, S2mAuthAckParameters, S2mAuthParameters, S2mConnectParameters,
   S2mForwardBroadcastPayloadAckParameters, S2mForwardBroadcastPayloadParameters, S2mForwardEventAckParameters,
   S2mForwardEventParameters, S2mModDirectAckParameters, S2mModDirectParameters,
 };
-use entangle_test_util::{S2mSuite, TestModulator, assert_message, default_s2m_config_with_secret};
-use entangle_util::string_atom::StringAtom;
+use narwhal_test_util::{S2mSuite, TestModulator, assert_message, default_s2m_config_with_secret};
+use narwhal_util::string_atom::StringAtom;
 
 const TEST_MODULATOR_SECRET: &str = "a_test_secret";
 
@@ -40,7 +40,7 @@ async fn test_s2m_connect_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("connection timeout")),
     }
   );
@@ -83,7 +83,7 @@ async fn test_s2m_ping_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("ping timeout")),
     }
   );
@@ -125,7 +125,7 @@ async fn test_s2m_max_connection_limit_reached() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::ServerOverloaded.into(),
+      reason: narwhal_protocol::ErrorReason::ServerOverloaded.into(),
       detail: Some(StringAtom::from("max connections reached")),
     }
   );
@@ -169,7 +169,7 @@ async fn test_s2m_max_message_size_exceeded() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::PolicyViolation.into(),
+      reason: narwhal_protocol::ErrorReason::PolicyViolation.into(),
       detail: Some(StringAtom::from("max message size exceeded")),
     }
   );
@@ -323,7 +323,7 @@ async fn test_s2m_forward_payload_with_alter() -> anyhow::Result<()> {
 
   let modulator =
     TestModulator::new().with_forward_message_payload_handler(|payload, _from, _channel_handler| async move {
-      let pool = entangle_util::pool::Pool::new(1, 1024);
+      let pool = narwhal_util::pool::Pool::new(1, 1024);
       let mut mut_pool_buffer = pool.acquire_buffer().await;
 
       let mut_buff_ptr = mut_pool_buffer.as_mut_slice();
@@ -438,7 +438,7 @@ async fn test_s2m_unsupported_protocol_version() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::UnsupportedProtocolVersion.into(),
+      reason: narwhal_protocol::ErrorReason::UnsupportedProtocolVersion.into(),
       detail: None
     }
   );
@@ -468,7 +468,7 @@ async fn test_s2m_invalid_message() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::BadRequest.into(),
+      reason: narwhal_protocol::ErrorReason::BadRequest.into(),
       detail: Some(StringAtom::from("unknown message")),
     }
   );

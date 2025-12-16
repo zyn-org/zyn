@@ -1,12 +1,12 @@
 [package]
-name = "entangle-server"
+name = "narwhal-server"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 
 # Binary target for the main binary
 [[bin]]
-name = "entangle"
+name = "narwhal"
 path = "bin/main.rs"
 
 [dependencies]
@@ -28,13 +28,13 @@ parking_lot = "0.12.5"
 rcgen = "0.14.0"
 rustls = "0.23.32"
 rustls-pemfile = "2.2.0"
-entangle-client = { path = "../client" }
-entangle-common = { path = "../common" }
-entangle-modulator = { path = "../modulator" }
-entangle-protocol = { path = "../protocol" }
-entangle-util = { path = "../util" }
+narwhal-client = { path = "../client" }
+narwhal-common = { path = "../common" }
+narwhal-modulator = { path = "../modulator" }
+narwhal-protocol = { path = "../protocol" }
+narwhal-util = { path = "../util" }
 rlimit = "0.10.2"
 
 [dev-dependencies]
 pki-types = { package = "rustls-pki-types", version = "1" }
-entangle-test-util = { path = "../test-util" }
+narwhal-test-util = { path = "../test-util" }

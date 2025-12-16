@@ -1,11 +1,11 @@
 [package]
-name = "entangle-benchmark"
+name = "narwhal-benchmark"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
 
 [[bin]]
-name = "entangle-bench"
+name = "narwhal-bench"
 path = "src/main.rs"
 
 [dependencies]
@@ -27,6 +27,6 @@ rand = "0.9"
 futures = "0.3"
 
 # Internal dependencies
-entangle-client = { path = "../client" }
-entangle-protocol = { path = "../protocol" }
-entangle-util = { path = "../util" }
+narwhal-client = { path = "../client" }
+narwhal-protocol = { path = "../protocol" }
+narwhal-util = { path = "../util" }

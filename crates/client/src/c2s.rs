@@ -12,14 +12,14 @@ use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use tokio_stream::wrappers::ReceiverStream;
 
-use entangle_common::client::{self, Handshaker, SessionInfo};
-use entangle_common::service::C2sService;
-use entangle_protocol::{
+use narwhal_common::client::{self, Handshaker, SessionInfo};
+use narwhal_common::service::C2sService;
+use narwhal_protocol::{
   AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, QoS, Zid, request,
 };
-use entangle_util::conn::TlsDialer;
-use entangle_util::pool::{Pool, PoolBuffer};
-use entangle_util::string_atom::StringAtom;
+use narwhal_util::conn::TlsDialer;
+use narwhal_util::pool::{Pool, PoolBuffer};
+use narwhal_util::string_atom::StringAtom;
 
 /// Configuration for C2S connections.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -59,9 +59,9 @@ pub struct C2sConfig {
   pub backoff_max_retries: usize,
 }
 
-impl From<C2sConfig> for entangle_common::client::Config {
+impl From<C2sConfig> for narwhal_common::client::Config {
   fn from(val: C2sConfig) -> Self {
-    entangle_common::client::Config {
+    narwhal_common::client::Config {
       max_idle_connections: 1,
       heartbeat_interval: val.heartbeat_interval,
       connect_timeout: val.connect_timeout,
@@ -328,7 +328,7 @@ impl C2sHandshaker {
   }
 }
 
-/// C2S client for connecting to the Entangle server.
+/// C2S client for connecting to the Narwhal server.
 #[derive(Clone)]
 pub struct C2sClient {
   client: Arc<client::Client<TlsStream<TcpStream>, C2sHandshaker, C2sService>>,
@@ -337,7 +337,7 @@ pub struct C2sClient {
 impl C2sClient {
   /// Creates a new C2S client instance.
   ///
-  /// This method initializes a client that connects to the Entangle server, handling
+  /// This method initializes a client that connects to the Narwhal server, handling
   /// the handshake process.
   ///
   /// By default, this method enables TLS certificate verification for secure connections.
@@ -352,7 +352,7 @@ impl C2sClient {
   ///
   /// # Returns
   ///
-  /// Returns a `C2sClient` instance that can be used to communicate with the Entangle server.
+  /// Returns a `C2sClient` instance that can be used to communicate with the Narwhal server.
   pub fn new(config: C2sConfig, auth_method: AuthMethod) -> anyhow::Result<Self> {
     let dialer = Arc::new(TlsDialer::new(config.address.as_str().into())?);
 
@@ -381,7 +381,7 @@ impl C2sClient {
   ///
   /// # Returns
   ///
-  /// Returns a `C2sClient` instance that can be used to communicate with the Entangle server.
+  /// Returns a `C2sClient` instance that can be used to communicate with the Narwhal server.
   pub fn new_with_insecure_tls(config: C2sConfig, auth_method: AuthMethod) -> anyhow::Result<Self> {
     let dialer = Arc::new(TlsDialer::with_certificate_verification(config.address.as_str().into(), false)?);
 
@@ -430,7 +430,7 @@ impl C2sClient {
   ///
   /// Returns an error if the join operation fails.
   pub async fn join_channel(&self, channel: StringAtom) -> anyhow::Result<()> {
-    use entangle_protocol::JoinChannelParameters;
+    use narwhal_protocol::JoinChannelParameters;
 
     let id = self.client.next_id().await;
     let message = Message::JoinChannel(JoinChannelParameters { id, channel: Some(channel), on_behalf: None });
@@ -458,7 +458,7 @@ impl C2sClient {
   /// * The connection fails
   /// * An unexpected response is received
   pub async fn join_new_channel(&self) -> anyhow::Result<StringAtom> {
-    use entangle_protocol::JoinChannelParameters;
+    use narwhal_protocol::JoinChannelParameters;
 
     let id = self.client.next_id().await;
     let message = Message::JoinChannel(JoinChannelParameters { id, channel: None, on_behalf: None });
@@ -487,7 +487,7 @@ impl C2sClient {
   ///
   /// Returns an error if the leave operation fails.
   pub async fn leave_channel(&self, channel: StringAtom) -> anyhow::Result<()> {
-    use entangle_protocol::LeaveChannelParameters;
+    use narwhal_protocol::LeaveChannelParameters;
 
     let id = self.client.next_id().await;
     let message = Message::LeaveChannel(LeaveChannelParameters { id, channel, on_behalf: None });
@@ -524,7 +524,7 @@ impl C2sClient {
     max_clients: u32,
     max_payload_size: u32,
   ) -> anyhow::Result<()> {
-    use entangle_protocol::SetChannelConfigurationParameters;
+    use narwhal_protocol::SetChannelConfigurationParameters;
 
     let id = self.client.next_id().await;
     let message = Message::SetChannelConfiguration(SetChannelConfigurationParameters {
@@ -571,7 +571,7 @@ impl C2sClient {
     allow_publish: Vec<StringAtom>,
     allow_read: Vec<StringAtom>,
   ) -> anyhow::Result<()> {
-    use entangle_protocol::SetChannelAclParameters;
+    use narwhal_protocol::SetChannelAclParameters;
 
     let id = self.client.next_id().await;
     let message =
@@ -603,7 +603,7 @@ impl C2sClient {
   ///
   /// Returns an error if the broadcast operation fails.
   pub async fn broadcast(&self, channel: StringAtom, qos: Option<QoS>, payload: PoolBuffer) -> anyhow::Result<()> {
-    use entangle_protocol::BroadcastParameters;
+    use narwhal_protocol::BroadcastParameters;
 
     let protocol_qos = qos.map(|q| q.as_u8());
 

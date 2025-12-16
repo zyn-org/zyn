@@ -6,8 +6,8 @@ use crate::deserialize::ParameterReader;
 use crate::serialize::ParameterWriter;
 use crate::{ErrorReason, EventKind};
 
-use entangle_protocol_macros::ProtocolMessageParameters;
-use entangle_util::string_atom::StringAtom;
+use narwhal_protocol_macros::ProtocolMessageParameters;
+use narwhal_util::string_atom::StringAtom;
 
 /// A trait for decoding and encoding the parameters of a message.
 pub trait ProtocolMessageParameters {

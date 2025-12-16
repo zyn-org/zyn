@@ -1,4 +1,4 @@
-# This configuration file is designed for benchmarking Entangle's C2S performance.
+# This configuration file is designed for benchmarking Narwhal's C2S performance.
 
 # Enable console logging for telemetry
 # [telemetry.console]

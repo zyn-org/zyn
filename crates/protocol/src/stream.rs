@@ -4,8 +4,8 @@ use std::io::Cursor;
 
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 
-use entangle_util::codec::StreamReader;
-use entangle_util::pool::MutablePoolBuffer;
+use narwhal_util::codec::StreamReader;
+use narwhal_util::pool::MutablePoolBuffer;
 
 use crate::{Message, deserialize, serialize};
 

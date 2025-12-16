@@ -2,8 +2,8 @@
 
 use crate::{c2s, transmitter::Resource};
 
-use entangle_protocol::Zid;
-use entangle_util::pool::PoolBuffer;
+use narwhal_protocol::Zid;
+use narwhal_util::pool::PoolBuffer;
 
 #[derive(Clone)]
 pub struct GlobalRouter {
@@ -41,7 +41,7 @@ impl GlobalRouter {
   /// * `Err` if routing failed
   pub async fn route_to(
     &self,
-    msg: entangle_protocol::Message,
+    msg: narwhal_protocol::Message,
     payload_opt: Option<PoolBuffer>,
     target: Zid,
     excluding_resource: Option<Resource>,
@@ -64,7 +64,7 @@ impl GlobalRouter {
   /// * `Err` if routing failed for any target
   pub async fn route_to_many<'a>(
     &self,
-    msg: entangle_protocol::Message,
+    msg: narwhal_protocol::Message,
     payload_opt: Option<PoolBuffer>,
     targets: impl IntoIterator<Item = &'a Zid>,
     excluding_resource: Option<Resource>,

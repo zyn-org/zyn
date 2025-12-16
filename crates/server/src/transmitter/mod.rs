@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use entangle_protocol::Message;
-use entangle_util::{pool::PoolBuffer, string_atom::StringAtom};
+use narwhal_protocol::Message;
+use narwhal_util::{pool::PoolBuffer, string_atom::StringAtom};
 
 /// A resource that uniquely identifies a connection within a single domain.
 pub struct Resource {

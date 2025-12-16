@@ -23,11 +23,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{debug, error, trace, warn};
 
-use entangle_protocol::{Message, PongParameters, deserialize, serialize};
-use entangle_util::backoff::ExponentialBackoff;
-use entangle_util::codec::StreamReader;
-use entangle_util::conn::Dialer;
-use entangle_util::pool::{MutablePoolBuffer, Pool, PoolBuffer};
+use narwhal_protocol::{Message, PongParameters, deserialize, serialize};
+use narwhal_util::backoff::ExponentialBackoff;
+use narwhal_util::codec::StreamReader;
+use narwhal_util::conn::Dialer;
+use narwhal_util::pool::{MutablePoolBuffer, Pool, PoolBuffer};
 
 use crate::service::Service;
 
@@ -44,7 +44,7 @@ const OUTBOUND_QUEUE_SIZE: usize = 4 * 1024;
 
 const INBOUND_QUEUE_SIZE: usize = 16 * 1024;
 
-// Entangle client configuration.
+// Narwhal client configuration.
 #[derive(Clone, Debug)]
 pub struct Config {
   /// The maximum number of idle connections to keep in the pool.
@@ -74,7 +74,7 @@ pub struct Config {
   pub backoff_max_retries: usize,
 }
 
-/// A trait representing the logic required to perform a handshake with the Entangle server.
+/// A trait representing the logic required to perform a handshake with the Narwhal server.
 ///
 /// The `Handshaker` is responsible for negotiating session parameters over an established stream
 /// (TCP or Unix domain socket). This trait allows customization of the handshake logic while
@@ -113,7 +113,7 @@ where
   async fn handshake(&self, stream: &mut S) -> anyhow::Result<(SessionInfo, Self::SessionExtraInfo)>;
 }
 
-/// An Entangle client that supports both single connection and connection pooling modes.
+/// An Narwhal client that supports both single connection and connection pooling modes.
 ///
 /// The mode is automatically determined by the `max_idle_connections` configuration:
 /// - When `max_idle_connections == 1`: Uses a single persistent connection

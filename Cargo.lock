@@ -489,182 +489,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
-name = "entangle-benchmark"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "clap",
- "entangle-client",
- "entangle-protocol",
- "entangle-util",
- "futures",
- "hdrhistogram",
- "indicatif",
- "rand",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "webpki-roots",
-]
-
-[[package]]
-name = "entangle-client"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "entangle-common",
- "entangle-protocol",
- "entangle-test-util",
- "entangle-util",
- "futures",
- "humantime-serde",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-rustls",
- "tokio-stream",
- "tracing",
-]
-
-[[package]]
-name = "entangle-common"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deadpool",
- "entangle-protocol",
- "entangle-util",
- "futures",
- "parking_lot",
- "rand",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "entangle-modulator"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "deadpool",
- "entangle-common",
- "entangle-protocol",
- "entangle-test-util",
- "entangle-util",
- "humantime-serde",
- "parking_lot",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
-name = "entangle-protocol"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "entangle-protocol-macros",
- "entangle-util",
- "once_cell",
- "regex",
- "tokio",
-]
-
-[[package]]
-name = "entangle-protocol-macros"
-version = "0.3.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "entangle-server"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "clap",
- "console-subscriber",
- "dashmap",
- "entangle-client",
- "entangle-common",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-test-util",
- "entangle-util",
- "humantime-serde",
- "parking_lot",
- "rcgen",
- "rlimit",
- "rustls",
- "rustls-pemfile",
- "rustls-pki-types",
- "serde",
- "serde_derive",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "entangle-test-util"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "entangle-common",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-server",
- "entangle-util",
- "futures",
- "rustls",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "webpki-roots",
-]
-
-[[package]]
-name = "entangle-util"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bytes",
- "crossbeam-queue",
- "humantime",
- "parking_lot",
- "rand",
- "rustls",
- "serde",
- "smallvec",
- "string_cache",
- "tokio",
- "tokio-rustls",
- "webpki-roots",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1128,6 +952,182 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "narwhal-benchmark"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "futures",
+ "hdrhistogram",
+ "indicatif",
+ "narwhal-client",
+ "narwhal-protocol",
+ "narwhal-util",
+ "rand",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "webpki-roots",
+]
+
+[[package]]
+name = "narwhal-client"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "humantime-serde",
+ "narwhal-common",
+ "narwhal-protocol",
+ "narwhal-test-util",
+ "narwhal-util",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-rustls",
+ "tokio-stream",
+ "tracing",
+]
+
+[[package]]
+name = "narwhal-common"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deadpool",
+ "futures",
+ "narwhal-protocol",
+ "narwhal-util",
+ "parking_lot",
+ "rand",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "narwhal-modulator"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "deadpool",
+ "humantime-serde",
+ "narwhal-common",
+ "narwhal-protocol",
+ "narwhal-test-util",
+ "narwhal-util",
+ "parking_lot",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "narwhal-protocol"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "narwhal-protocol-macros",
+ "narwhal-util",
+ "once_cell",
+ "regex",
+ "tokio",
+]
+
+[[package]]
+name = "narwhal-protocol-macros"
+version = "0.3.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "narwhal-server"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "clap",
+ "console-subscriber",
+ "dashmap",
+ "humantime-serde",
+ "narwhal-client",
+ "narwhal-common",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-test-util",
+ "narwhal-util",
+ "parking_lot",
+ "rcgen",
+ "rlimit",
+ "rustls",
+ "rustls-pemfile",
+ "rustls-pki-types",
+ "serde",
+ "serde_derive",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "narwhal-test-util"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "narwhal-common",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-server",
+ "narwhal-util",
+ "rustls",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "webpki-roots",
+]
+
+[[package]]
+name = "narwhal-util"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "crossbeam-queue",
+ "humantime",
+ "parking_lot",
+ "rand",
+ "rustls",
+ "serde",
+ "smallvec",
+ "string_cache",
+ "tokio",
+ "tokio-rustls",
+ "webpki-roots",
 ]
 
 [[package]]
