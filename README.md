@@ -1,6 +1,5 @@
-# Narwhal: An extensible pub/sub messaging server for the edge
-
 <div align="center">
+  <div><h3>Narwhal: An extensible pub/sub messaging server for the edge</h3></div>
   <img src="./.github/images/narwhal1.png"
        alt="walrus"
        width="25%">
