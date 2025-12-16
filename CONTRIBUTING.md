@@ -1,6 +1,6 @@
-# Contributing to Entangle
+# Contributing to Narwhal
 
-Thank you for your interest in contributing to Entangle! We welcome contributions from everyone and appreciate your effort to make this project better.
+Thank you for your interest in contributing to Narwhal! We welcome contributions from everyone and appreciate your effort to make this project better.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ This project adheres to a [Code of Conduct](CODE_OF_CONDUCT.md). By participatin
 
 ## Getting Started
 
-There are many ways to contribute to Entangle:
+There are many ways to contribute to Narwhal:
 
 - **Report bugs**: If you find a bug, please open an issue
 - **Suggest features**: Have an idea? We'd love to hear it
@@ -39,8 +39,8 @@ There are many ways to contribute to Entangle:
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/entangle-io/entangle.git
-cd entangle
+git clone https://github.com/narwhal-io/narwhal.git
+cd narwhal
 ```
 
 ### Install Dependencies
@@ -80,7 +80,7 @@ cargo test -p <crate-name>
 For example:
 
 ```bash
-cargo test -p entangle-server
+cargo test -p narwhal-server
 ```
 
 ### Running Clippy
@@ -194,7 +194,7 @@ What actually happened.
 **Environment**
 - OS: [e.g., macOS, Linux, Windows]
 - Rust version: [output of `rustc --version`]
-- Entangle version/commit: [e.g., v0.1.0 or commit hash]
+- Narwhal version/commit: [e.g., v0.1.0 or commit hash]
 
 **Additional Context**
 Add any other context about the problem here.
@@ -256,4 +256,4 @@ Contributors who have their pull requests merged will be recognized in the proje
 
 ---
 
-Thank you for contributing to Entangle! 🎉
+Thank you for contributing to Narwhal! 🎉

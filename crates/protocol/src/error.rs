@@ -2,11 +2,11 @@
 
 use std::str::FromStr;
 
-use entangle_util::string_atom::StringAtom;
+use narwhal_util::string_atom::StringAtom;
 
 use crate::{ErrorParameters, Message};
 
-/// Represents the various error reasons that can occur in the Entangle protocol.
+/// Represents the various error reasons that can occur in the Narwhal protocol.
 ///
 /// `ErrorReason` is an enumeration of all possible error codes that can be
 /// returned by the protocol. Each variant corresponds to a specific error

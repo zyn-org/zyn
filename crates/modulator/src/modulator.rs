@@ -5,9 +5,9 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 
-use entangle_protocol::{Event, Zid};
-use entangle_util::pool::PoolBuffer;
-use entangle_util::string_atom::StringAtom;
+use narwhal_protocol::{Event, Zid};
+use narwhal_util::pool::PoolBuffer;
+use narwhal_util::string_atom::StringAtom;
 
 /// Represents individual operations that a modulator can perform.
 ///

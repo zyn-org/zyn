@@ -5,16 +5,16 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use tokio::sync::broadcast;
 
-use entangle_modulator::Modulator;
-use entangle_modulator::modulator::{
+use narwhal_modulator::Modulator;
+use narwhal_modulator::modulator::{
   AuthRequest, AuthResponse, AuthResult, ForwardBroadcastPayloadRequest, ForwardBroadcastPayloadResponse,
   ForwardBroadcastPayloadResult, ForwardEventRequest, ForwardEventResponse, Operation, Operations,
   OutboundPrivatePayload, ReceivePrivatePayloadRequest, ReceivePrivatePayloadResponse, SendPrivatePayloadRequest,
   SendPrivatePayloadResponse, SendPrivatePayloadResult,
 };
-use entangle_protocol::{Event, Zid};
-use entangle_util::pool::PoolBuffer;
-use entangle_util::string_atom::StringAtom;
+use narwhal_protocol::{Event, Zid};
+use narwhal_util::pool::PoolBuffer;
+use narwhal_util::string_atom::StringAtom;
 
 type AuthHandler = Arc<dyn Fn(AuthRequest) -> BoxFuture<'static, anyhow::Result<AuthResponse>> + Send + Sync>;
 type ForwardMessagePayloadHandler = Arc<
@@ -205,18 +205,18 @@ impl Modulator for TestModulator {
   }
 }
 
-pub fn default_s2m_config(shared_secret: &str) -> entangle_modulator::S2mServerConfig {
-  entangle_modulator::S2mServerConfig {
-    server: entangle_modulator::ServerConfig {
-      listener: entangle_modulator::ListenerConfig {
-        network: entangle_modulator::TCP_NETWORK.to_string(),
+pub fn default_s2m_config(shared_secret: &str) -> narwhal_modulator::S2mServerConfig {
+  narwhal_modulator::S2mServerConfig {
+    server: narwhal_modulator::ServerConfig {
+      listener: narwhal_modulator::ListenerConfig {
+        network: narwhal_modulator::TCP_NETWORK.to_string(),
         bind_address: "127.0.0.1:0".to_string(), // use a random port
         ..Default::default()
       },
       shared_secret: shared_secret.to_string(),
-      limits: entangle_modulator::Limits { max_connections: 50, max_message_size: 256 * 1024, ..Default::default() },
+      limits: narwhal_modulator::Limits { max_connections: 50, max_message_size: 256 * 1024, ..Default::default() },
       ..Default::default()
     },
-    m2s_client: entangle_modulator::M2sClientConfig::default(),
+    m2s_client: narwhal_modulator::M2sClientConfig::default(),
   }
 }

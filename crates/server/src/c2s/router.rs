@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 
-use entangle_util::pool::PoolBuffer;
-use entangle_util::string_atom::StringAtom;
+use narwhal_util::pool::PoolBuffer;
+use narwhal_util::string_atom::StringAtom;
 
 use crate::transmitter::Transmitter;
 
@@ -81,7 +81,7 @@ impl Router {
   /// `Ok(())` if the routing was successful, or an error if routing failed
   pub fn route_to(
     &self,
-    msg: entangle_protocol::Message,
+    msg: narwhal_protocol::Message,
     payload_opt: Option<PoolBuffer>,
     target: StringAtom,
     excluding_local_handler: Option<usize>,

@@ -229,9 +229,9 @@ impl Default for Limits {
   }
 }
 
-impl From<&Config> for entangle_common::conn::Config {
+impl From<&Config> for narwhal_common::conn::Config {
   fn from(config: &Config) -> Self {
-    entangle_common::conn::Config {
+    narwhal_common::conn::Config {
       max_connections: config.limits.max_connections,
       max_message_size: config.limits.max_message_size,
       max_payload_size: config.limits.max_payload_size,

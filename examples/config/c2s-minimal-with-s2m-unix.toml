@@ -8,7 +8,7 @@ type = "s2m"
 # S2M client configuration.
 [modulator.s2m-client]
 network = "unix"
-socket_path = "/tmp/entangle-s2m-server.sock"
+socket_path = "/tmp/narwhal-s2m-server.sock"
 
 # M2S server configuration.
 #
@@ -16,4 +16,4 @@ socket_path = "/tmp/entangle-s2m-server.sock"
 # When present, it accepts incoming connections from the S2M server for private payload delivery.
 [modulator.m2s-server.listener]
 network = "unix"
-socket_path = "/tmp/entangle-m2s-server.sock"
+socket_path = "/tmp/narwhal-m2s-server.sock"

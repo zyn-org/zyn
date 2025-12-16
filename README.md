@@ -1,8 +1,8 @@
-# Entangle
+# Narwhal
 
-[![CI](https://img.shields.io/github/actions/workflow/status/entangle-io/entangle/ci.yaml?branch=main)](https://github.com/entangle-io/entangle/actions)
-[![Releases](https://img.shields.io/github/v/release/entangle-io/entangle?include_prereleases)](https://github.com/entangle-io/entangle/releases)
-[![LICENSE](https://img.shields.io/github/license/entangle-io/entangle)](https://github.com/entangle-io/entangle/blob/master/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/narwhal-io/narwhal/ci.yaml?branch=main)](https://github.com/narwhal-io/narwhal/actions)
+[![Releases](https://img.shields.io/github/v/release/narwhal-io/narwhal?include_prereleases)](https://github.com/narwhal-io/narwhal/releases)
+[![LICENSE](https://img.shields.io/github/license/narwhal-io/narwhal)](https://github.com/narwhal-io/narwhal/blob/master/LICENSE)
 
 An extensible messaging server built for real-time pub/sub communication.
 
@@ -31,21 +31,21 @@ https://github.com/user-attachments/assets/34baf7d3-4cfa-440d-a6e4-89cb94e922d3
 #### Building from Source
 
 ```bash
-git clone https://github.com/entangle-io/entangle.git
-cd entangle
+git clone https://github.com/narwhal-io/narwhal.git
+cd narwhal
 cargo build --release
 ```
 
-The compiled binary will be available at `target/release/entangle`.
+The compiled binary will be available at `target/release/narwhal`.
 
 #### Running the Server
 
 ```bash
 # Run with default configuration
-cargo run --bin entangle
+cargo run --bin narwhal
 
 # Or with a custom config file
-cargo run --bin entangle -- --config path/to/config.toml
+cargo run --bin narwhal -- --config path/to/config.toml
 ```
 
 ### Testing the Connection
@@ -56,15 +56,15 @@ Once the server is running, you can test the connection using OpenSSL:
 openssl s_client -connect 127.0.0.1:22622 -ign_eof
 ```
 
-## What is Entangle?
+## What is Narwhal?
 
-Entangle is a real-time messaging server that implements a protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Entangle provides a low-level infrastructure that delegates custom application logic to an external **modulator**.
+Narwhal is a real-time messaging server that implements a protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Narwhal provides a low-level infrastructure that delegates custom application logic to an external **modulator**.
 
 ### What is a Modulator?
 
-A modulator is an external service that implements custom application logic on top of Entangle's messaging layer. Rather than embedding application-specific features in the server, Entangle delegates these concerns to a modulator, keeping the core server lightweight and focused on message routing.
+A modulator is an external service that implements custom application logic on top of Narwhal's messaging layer. Rather than embedding application-specific features in the server, Narwhal delegates these concerns to a modulator, keeping the core server lightweight and focused on message routing.
 
-Each Entangle server connects to exactly **one modulator**, ensuring consistent application protocol semantics.
+Each Narwhal server connects to exactly **one modulator**, ensuring consistent application protocol semantics.
 
 **Common Modulator Use Cases:**
 
@@ -78,21 +78,21 @@ Each Entangle server connects to exactly **one modulator**, ensuring consistent 
 
 ## Architecture
 
-Entangle supports three connection types:
+Narwhal supports three connection types:
 
-1. **Client-to-Server (C2S)**: End-user clients connecting to the Entangle server
+1. **Client-to-Server (C2S)**: End-user clients connecting to the Narwhal server
 2. **Server-to-Modulator (S2M)**: Server-initiated connection to the modulator for delegating operations
 3. **Modulator-to-Server (M2S)**: Modulator-initiated connection for sending private messages to clients
 
 ```mermaid
 graph LR
-    Clients["Clients"] <-->|C2S| Server["Entangle Server"]
+    Clients["Clients"] <-->|C2S| Server["Narwhal Server"]
     Server <-->|S2M/M2S| Modulator["Modulator"]
 ```
 
 ## Configuration
 
-Entangle uses TOML format for configuration. See the [`examples/config/`](examples/config/) directory for examples.
+Narwhal uses TOML format for configuration. See the [`examples/config/`](examples/config/) directory for examples.
 
 ## Documentation
 
@@ -109,14 +109,14 @@ The repository includes several example modulators in the [`examples/modulator/`
 - **broadcast-payload-csv-validator**: Validates CSV message payloads
 - **private-payload-sender**: Demonstrates sending private messages to clients
 
-Each example demonstrates different aspects of building modulators for Entangle.
+Each example demonstrates different aspects of building modulators for Narwhal.
 
 ## Development
 
 ### Project Structure
 
 ```
-entangle/
+narwhal/
 ├── crates/
 │   ├── benchmark/       # Performance benchmarking tools
 │   ├── client/          # Client libraries
@@ -124,7 +124,7 @@ entangle/
 │   ├── modulator/       # Modulator client/server implementation
 │   ├── protocol/        # Protocol message definitions
 │   ├── protocol-macros/ # Protocol code generation macros
-│   ├── server/          # Main Entangle server
+│   ├── server/          # Main Narwhal server
 │   ├── test-util/       # Testing utilities
 │   └── util/            # General utilities
 ├── docs/                # Documentation
@@ -140,14 +140,14 @@ cargo test
 
 ### Benchmarking Performance
 
-Entangle includes a benchmark tool to measure throughput and latency performance:
+Narwhal includes a benchmark tool to measure throughput and latency performance:
 
 ```bash
 # Build the benchmark tool
-cargo build --bin entangle-bench --release
+cargo build --bin narwhal-bench --release
 
 # Run a basic benchmark against a local server
-./target/release/entangle-bench \
+./target/release/narwhal-bench \
   --server 127.0.0.1:22622 \
   --producers 1 \
   --consumers 1 \
@@ -155,7 +155,7 @@ cargo build --bin entangle-bench --release
   --max-payload-size 16384
 ```
 
-The benchmark tool simulates multiple producer and consumer clients connecting to an Entangle server and exchanging messages. It reports metrics such as:
+The benchmark tool simulates multiple producer and consumer clients connecting to a Narwhal server and exchanging messages. It reports metrics such as:
 - Message throughput (messages/second)
 - Latency percentiles (p50, p90, p99)
 - Connection success rates
@@ -164,26 +164,26 @@ The benchmark tool simulates multiple producer and consumer clients connecting t
 ### Running with Debug Tracing
 
 ```bash
-RUST_LOG=debug cargo run --bin entangle
+RUST_LOG=debug cargo run --bin narwhal
 ```
 
 ## Project Status
 
 **Current Version: 0.3.0 (Alpha)**
 
-Entangle is in active development and currently in **alpha** stage. While the core functionality is working and tested, please note:
+Narwhal is in active development and currently in **alpha** stage. While the core functionality is working and tested, please note:
 
 - **APIs may change** before reaching 1.0.0 - Breaking changes may occur as we refine the protocol and interfaces based on community feedback
 - **Evaluation and development use** - Suitable for testing, proof-of-concepts, and non-production environments
-- **Community feedback welcome** - We're actively seeking input to improve Entangle before stabilizing the 1.0.0 API
+- **Community feedback welcome** - We're actively seeking input to improve Narwhal before stabilizing the 1.0.0 API
 
-If you're interested in using Entangle in production, we encourage you to get involved, provide feedback, and help shape the future of the project!
+If you're interested in using Narwhal in production, we encourage you to get involved, provide feedback, and help shape the future of the project!
 
 ## Roadmap
 
-We're actively working on expanding Entangle's capabilities. Here are some features planned for future releases:
+We're actively working on expanding Narwhal's capabilities. Here are some features planned for future releases:
 
-- **Federation Support**: Enable multiple Entangle servers to communicate and share messages across distributed deployments, allowing for horizontal scaling and multi-region architectures
+- **Federation Support**: Enable multiple Narwhal servers to communicate and share messages across distributed deployments, allowing for horizontal scaling and multi-region architectures
 - **Enhanced Observability**: Built-in metrics, tracing, and monitoring capabilities
 - **Additional Protocol Transports**: Support for WebSocket and other transport layers
 - **Performance Optimizations**: Continued improvements to throughput and latency
@@ -203,5 +203,5 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ## Community
 
-- **Issues**: [GitHub Issues](https://github.com/entangle-io/entangle/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/entangle-io/entangle/discussions)
+- **Issues**: [GitHub Issues](https://github.com/narwhal-io/narwhal/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/narwhal-io/narwhal/discussions)

@@ -126,9 +126,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
@@ -145,9 +145,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
@@ -653,9 +653,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
@@ -686,9 +686,9 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "entangle-modulator",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-modulator",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
@@ -1521,7 +1521,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "entangle-common"
+name = "narwhal-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1532,12 +1532,12 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
-name = "entangle-modulator"
+name = "narwhal-modulator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1550,24 +1550,24 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "entangle-common",
- "entangle-protocol",
- "entangle-util",
+ "narwhal-common",
+ "narwhal-protocol",
+ "narwhal-util",
 ]
 
 [[package]]
-name = "entangle-protocol"
+name = "narwhal-protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "once_cell",
  "regex",
- "entangle-protocol-macros",
- "entangle-util",
+ "narwhal-protocol-macros",
+ "narwhal-util",
 ]
 
 [[package]]
-name = "entangle-protocol-macros"
+name = "narwhal-protocol-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
@@ -1576,7 +1576,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "entangle-util"
+name = "narwhal-util"
 version = "0.1.0"
 dependencies = [
  "anyhow",

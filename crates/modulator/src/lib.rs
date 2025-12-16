@@ -14,8 +14,8 @@ use serde_derive::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
-use entangle_common::conn::ConnManager;
-use entangle_common::service::{M2sService, S2mService};
+use narwhal_common::conn::ConnManager;
+use narwhal_common::service::{M2sService, S2mService};
 
 use crate::client::S2mClient;
 pub use crate::config::*;
@@ -175,7 +175,7 @@ pub async fn init_modulator(
       let session_info =
         s2m_client.session_info().await.map_err(|e| anyhow::anyhow!("failed to connect to s2m server: {}", e))?;
 
-      let is_tcp_socket = config.s2m_client.network == entangle_common::client::TCP_NETWORK;
+      let is_tcp_socket = config.s2m_client.network == narwhal_common::client::TCP_NETWORK;
 
       if is_tcp_socket {
         info!(network = config.s2m_client.network, address = config.s2m_client.address, "s2m connection established");

@@ -6,9 +6,9 @@ use anyhow::Context;
 
 use crate::router::GlobalRouter;
 use crate::transmitter::Resource;
-use entangle_modulator::Modulator;
-use entangle_modulator::modulator::Operation;
-use entangle_protocol::{Event, Zid};
+use narwhal_modulator::Modulator;
+use narwhal_modulator::modulator::Operation;
+use narwhal_protocol::{Event, Zid};
 
 /// A notification service that handles routing events to multiple targets.
 ///
@@ -68,7 +68,7 @@ impl Notifier {
       && modulator.operations().await?.contains(Operation::ForwardEvent)
     {
       modulator
-        .forward_event(entangle_modulator::modulator::ForwardEventRequest { event: event.clone() })
+        .forward_event(narwhal_modulator::modulator::ForwardEventRequest { event: event.clone() })
         .await
         .context("failed to forward event to modulator")?;
     }

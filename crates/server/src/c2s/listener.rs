@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
 
-use entangle_common::service::{C2sService, Service};
+use narwhal_common::service::{C2sService, Service};
 
 use crate::c2s::config::ListenerConfig;
 use crate::util::tls::{create_tls_config, generate_self_signed_cert};
@@ -20,7 +20,7 @@ const LOCALHOST_DOMAIN: &str = "localhost";
 
 /// The C2S connection manager.
 type C2sConnManager =
-  entangle_common::conn::ConnManager<c2s::conn::C2sDispatcher, c2s::conn::C2sDispatcherFactory, C2sService>;
+  narwhal_common::conn::ConnManager<c2s::conn::C2sDispatcher, c2s::conn::C2sDispatcherFactory, C2sService>;
 
 /// A TLS-enabled TCP listener for client-to-server (C2S) connections.
 ///

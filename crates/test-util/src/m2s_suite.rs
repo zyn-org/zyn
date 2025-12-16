@@ -5,15 +5,15 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::broadcast;
 
-use entangle_modulator::{M2sListener, OutboundPrivatePayload};
-use entangle_protocol::{M2sConnectParameters, Message};
+use narwhal_modulator::{M2sListener, OutboundPrivatePayload};
+use narwhal_protocol::{M2sConnectParameters, Message};
 
 use crate::TestConn;
 
 /// A test suite for the M2S server.
 pub struct M2sSuite {
   /// The server configuration.
-  config: Arc<entangle_modulator::M2sServerConfig>,
+  config: Arc<narwhal_modulator::M2sServerConfig>,
 
   /// The modulator server listener.
   ln: M2sListener,
@@ -29,18 +29,17 @@ pub struct M2sSuite {
 
 impl M2sSuite {
   /// Creates a new M2sSuite with the given configuration.
-  pub fn with_config(config: entangle_modulator::M2sServerConfig) -> Self {
+  pub fn with_config(config: narwhal_modulator::M2sServerConfig) -> Self {
     let arc_config = Arc::new(config);
 
     // Create the broadcast channel for outbound payloads
     let (payload_tx, payload_rx) = broadcast::channel(1024);
 
-    let dispatcher_factory =
-      entangle_modulator::conn::M2sDispatcherFactory::new(arc_config.clone(), payload_tx.clone());
+    let dispatcher_factory = narwhal_modulator::conn::M2sDispatcherFactory::new(arc_config.clone(), payload_tx.clone());
 
     let server_config = (*arc_config).clone();
 
-    let conn_mng = entangle_modulator::conn::M2sConnManager::new(&server_config, dispatcher_factory);
+    let conn_mng = narwhal_modulator::conn::M2sConnManager::new(&server_config, dispatcher_factory);
 
     let ln = M2sListener::new(server_config.listener.clone(), conn_mng.clone());
 
@@ -48,7 +47,7 @@ impl M2sSuite {
   }
 
   /// Returns the server configuration.
-  pub fn config(&self) -> Arc<entangle_modulator::M2sServerConfig> {
+  pub fn config(&self) -> Arc<narwhal_modulator::M2sServerConfig> {
     self.config.clone()
   }
 
@@ -82,7 +81,7 @@ impl M2sSuite {
 
     let max_message_size = self.config().limits.max_message_size as usize;
 
-    let pool = entangle_util::pool::Pool::new(1, max_message_size);
+    let pool = narwhal_util::pool::Pool::new(1, max_message_size);
 
     let socket = TestConn::new(tcp_stream, pool.acquire_buffer().await, max_message_size);
 
@@ -140,14 +139,14 @@ impl M2sSuite {
 }
 
 /// Creates a default M2S configuration for testing.
-pub fn default_m2s_config() -> entangle_modulator::M2sServerConfig {
-  entangle_modulator::M2sServerConfig {
-    listener: entangle_modulator::ListenerConfig {
-      network: entangle_modulator::TCP_NETWORK.to_string(),
+pub fn default_m2s_config() -> narwhal_modulator::M2sServerConfig {
+  narwhal_modulator::M2sServerConfig {
+    listener: narwhal_modulator::ListenerConfig {
+      network: narwhal_modulator::TCP_NETWORK.to_string(),
       bind_address: "127.0.0.1:0".to_string(), // use a random port
       ..Default::default()
     },
-    limits: entangle_modulator::Limits {
+    limits: narwhal_modulator::Limits {
       max_connections: 10,
       max_message_size: 256 * 1024,
       payload_pool_memory_budget: 512 * 1024,

@@ -13,15 +13,15 @@ use tokio::signal;
 use tracing::info;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
-use entangle_modulator::modulator::{
+use narwhal_modulator::modulator::{
   AuthRequest, AuthResponse, AuthResult, ForwardBroadcastPayloadRequest, ForwardBroadcastPayloadResponse,
   ForwardEventRequest, ForwardEventResponse, Operation, Operations, ReceivePrivatePayloadRequest,
   ReceivePrivatePayloadResponse, SendPrivatePayloadRequest, SendPrivatePayloadResponse,
 };
 
-use entangle_modulator::config::S2mServerConfig;
-use entangle_modulator::{create_s2m_listener, Modulator};
-use entangle_util::string_atom::StringAtom;
+use narwhal_modulator::config::S2mServerConfig;
+use narwhal_modulator::{create_s2m_listener, Modulator};
+use narwhal_util::string_atom::StringAtom;
 
 const MODULATOR_PROTOCOL_NAME: &str = "plain-authenticator/1.0";
 
@@ -46,7 +46,7 @@ const PASSWORD: &str = "pass";
 struct PlainAuthenticator {}
 
 #[async_trait]
-impl entangle_modulator::Modulator for PlainAuthenticator {
+impl narwhal_modulator::Modulator for PlainAuthenticator {
   /// Returns the unique name of this modulator.
   async fn protocol_name(&self) -> anyhow::Result<StringAtom> {
     Ok(MODULATOR_PROTOCOL_NAME.into())

@@ -1,5 +1,5 @@
 [package]
-name = "entangle-protocol-macros"
+name = "narwhal-protocol-macros"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"

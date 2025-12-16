@@ -2,17 +2,17 @@
 
 use std::time::Duration;
 
-use entangle_protocol::EventKind::{MemberJoined, MemberLeft};
-use entangle_protocol::{
+use narwhal_protocol::EventKind::{MemberJoined, MemberLeft};
+use narwhal_protocol::{
   BroadcastParameters, ChannelAclParameters, ChannelConfigurationParameters, ConnectParameters, ErrorParameters,
   EventParameters, GetChannelAclParameters, GetChannelConfigurationParameters, JoinChannelAckParameters,
   JoinChannelParameters, LeaveChannelAckParameters, LeaveChannelParameters, ListChannelsAckParameters,
   ListChannelsParameters, ListMembersAckParameters, ListMembersParameters, MessageParameters, SetChannelAclParameters,
   SetChannelConfigurationParameters,
 };
-use entangle_protocol::{IdentifyParameters, Message};
-use entangle_test_util::{C2sSuite, assert_message, default_c2s_config};
-use entangle_util::string_atom::StringAtom;
+use narwhal_protocol::{IdentifyParameters, Message};
+use narwhal_test_util::{C2sSuite, assert_message, default_c2s_config};
+use narwhal_util::string_atom::StringAtom;
 
 // Usernames for testing.
 const TEST_USER_1: &str = "test_user_1";
@@ -40,7 +40,7 @@ async fn test_c2s_connect_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("connection timeout")),
     }
   );
@@ -77,7 +77,7 @@ async fn test_c2s_authentication_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("authentication timeout")),
     }
   );
@@ -115,7 +115,7 @@ async fn test_c2s_ping_timeout() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::Timeout.into(),
+      reason: narwhal_protocol::ErrorReason::Timeout.into(),
       detail: Some(StringAtom::from("ping timeout")),
     }
   );
@@ -142,7 +142,7 @@ async fn test_c2s_unknown_message() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::BadRequest.into(),
+      reason: narwhal_protocol::ErrorReason::BadRequest.into(),
       detail: Some(StringAtom::from("unknown message")),
     }
   );
@@ -179,7 +179,7 @@ async fn test_c2s_max_connection_limit_reached() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::ServerOverloaded.into(),
+      reason: narwhal_protocol::ErrorReason::ServerOverloaded.into(),
       detail: Some(StringAtom::from("max connections reached")),
     }
   );
@@ -218,7 +218,7 @@ async fn test_c2s_max_message_size_exceeded() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: None,
-      reason: entangle_protocol::ErrorReason::PolicyViolation.into(),
+      reason: narwhal_protocol::ErrorReason::PolicyViolation.into(),
       detail: Some(StringAtom::from("max message size exceeded")),
     }
   );
@@ -255,7 +255,7 @@ async fn test_c2s_max_subscriptions_reached() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: Some(1),
-      reason: entangle_protocol::ErrorReason::PolicyViolation.into(),
+      reason: narwhal_protocol::ErrorReason::PolicyViolation.into(),
       detail: Some(StringAtom::from("subscription limit reached")),
     }
   );
@@ -287,7 +287,7 @@ async fn test_c2s_username_in_use() -> anyhow::Result<()> {
   assert_message!(
     tls_socket.read_message().await?,
     Message::Error,
-    ErrorParameters { id: None, reason: entangle_protocol::ErrorReason::UsernameInUse.into(), detail: None }
+    ErrorParameters { id: None, reason: narwhal_protocol::ErrorReason::UsernameInUse.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -430,7 +430,7 @@ async fn test_c2s_join_non_existing_channel() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::ChannelNotFound.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::ChannelNotFound.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -469,7 +469,7 @@ async fn test_c2s_join_full_channel() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::ChannelIsFull.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::ChannelIsFull.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -503,7 +503,7 @@ async fn test_c2s_join_more_than_once() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::UserInChannel.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::UserInChannel.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -673,7 +673,7 @@ async fn test_c2s_non_member_leave() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(1), reason: entangle_protocol::ErrorReason::UserNotInChannel.into(), detail: None }
+    ErrorParameters { id: Some(1), reason: narwhal_protocol::ErrorReason::UserNotInChannel.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -816,7 +816,7 @@ async fn test_c2s_leave_from_non_existing_channel() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::ChannelNotFound.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::ChannelNotFound.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -917,7 +917,7 @@ async fn test_c2s_unauthorized_channel_configuration() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(1234), reason: entangle_protocol::ErrorReason::Forbidden.into(), detail: None }
+    ErrorParameters { id: Some(1234), reason: narwhal_protocol::ErrorReason::Forbidden.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -955,7 +955,7 @@ async fn test_c2s_channel_max_clients_configuration_limit() -> anyhow::Result<()
     Message::Error,
     ErrorParameters {
       id: Some(1234),
-      reason: entangle_protocol::ErrorReason::BadRequest.into(),
+      reason: narwhal_protocol::ErrorReason::BadRequest.into(),
       detail: Some(StringAtom::from("max_clients exceeds server established limit")),
     }
   );
@@ -995,7 +995,7 @@ async fn test_c2s_channel_max_payload_configuration_limit() -> anyhow::Result<()
     Message::Error,
     ErrorParameters {
       id: Some(1234),
-      reason: entangle_protocol::ErrorReason::BadRequest.into(),
+      reason: narwhal_protocol::ErrorReason::BadRequest.into(),
       detail: Some(StringAtom::from("max_payload_size exceeds server established limit")),
     }
   );
@@ -1055,7 +1055,7 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(1234), reason: entangle_protocol::ErrorReason::Forbidden.into(), detail: None }
+    ErrorParameters { id: Some(1234), reason: narwhal_protocol::ErrorReason::Forbidden.into(), detail: None }
   );
 
   // Retrieve the channel ACL
@@ -1124,7 +1124,7 @@ async fn test_c2s_channel_acl_max_entries() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: Some(1234),
-      reason: entangle_protocol::ErrorReason::PolicyViolation.into(),
+      reason: narwhal_protocol::ErrorReason::PolicyViolation.into(),
       detail: Some(StringAtom::from("ACL allow list exceeds max entries")),
     }
   );
@@ -1173,7 +1173,7 @@ async fn test_c2s_channel_acl_join_deny() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(2), reason: entangle_protocol::ErrorReason::NotAllowed.into(), detail: None }
+    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::NotAllowed.into(), detail: None }
   );
 
   suite.teardown().await?;
@@ -1274,7 +1274,7 @@ async fn test_c2s_broadcast_invalid_payload() -> anyhow::Result<()> {
     Message::Error,
     ErrorParameters {
       id: Some(1234),
-      reason: entangle_protocol::ErrorReason::BadRequest.into(),
+      reason: narwhal_protocol::ErrorReason::BadRequest.into(),
       detail: Some(StringAtom::from("invalid payload format"))
     }
   );
@@ -1332,7 +1332,7 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(1234), reason: entangle_protocol::ErrorReason::NotAllowed.into(), detail: None }
+    ErrorParameters { id: Some(1234), reason: narwhal_protocol::ErrorReason::NotAllowed.into(), detail: None }
   );
 
   suite.teardown().await?;

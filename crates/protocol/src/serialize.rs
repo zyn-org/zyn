@@ -6,7 +6,7 @@ use std::ops::Deref;
 
 use crate::message::Message;
 
-use entangle_util::string_atom::StringAtom;
+use narwhal_util::string_atom::StringAtom;
 
 const ESC_CHAR: [char; 4] = ['"', '\'', ':', '*'];
 

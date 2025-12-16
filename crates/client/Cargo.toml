@@ -1,5 +1,5 @@
 [package]
-name = "entangle-client"
+name = "narwhal-client"
 version = "0.3.0"
 edition = "2024"
 license = "AGPL-3.0-only"
@@ -14,10 +14,10 @@ tokio-stream = "0.1"
 tracing = "0.1.41"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_derive = "1.0.219"
-entangle-common = { path = "../common" }
-entangle-protocol = { path = "../protocol" }
-entangle-util = { path = "../util" }
+narwhal-common = { path = "../common" }
+narwhal-protocol = { path = "../protocol" }
+narwhal-util = { path = "../util" }
 futures = "0.3.31"
 
 [dev-dependencies]
-entangle-test-util = { path = "../test-util" }
+narwhal-test-util = { path = "../test-util" }
