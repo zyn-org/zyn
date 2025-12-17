@@ -10,24 +10,49 @@
 
 </div>
 
-## Features
+## Why Narwhal?
+Narwhal was born out of a specific frustration: Building a modern chat feature shouldn't be this hard.
 
-- **Built for Edge Applications**: Specifically designed for mobile, desktop, and IoT client applications
-- **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
-- **Modular Architecture**: Extend the server with custom application logic via an external modulator
-- **Secure by Default**: TLS/SSL support with automatic certificate generation for development
-- **Channel Management**: Fine-grained access control and configuration per channel
-- **High Performance**: Asynchronous Rust implementation with efficient message routing
+When trying to integrate real-time chat into a startup project, the existing options forced a difficult trade-off:
+
+1. **XMPP (e.g., ejabberd)**: Powerful, but massive complexity, XML overhead, and a steep learning curve for simple needs.
+
+2. **MQTT Brokers**: Lightweight and fast, but rigid. Implementing custom authentication, dynamic permissions, or message validation often requires writing complex broker plugins in C/C++ or wrapping the broker in a "sidecar" mess.
+
+Narwhal is the middle ground. It provides the lightweight performance of an edge broker but delegates the "brains" (Authentication, Authorization, Validation) to your application code via a Modulator.
+
+### What is a Modulator?
+
+A modulator is an external service that implements custom application logic on top of Narwhal's messaging layer. Rather than embedding application-specific features in the server, Narwhal delegates these concerns to a modulator, keeping the core server lightweight and focused on message routing.
+
+Each Narwhal server connects to exactly **one modulator**, ensuring consistent application protocol semantics.
+
+**Common Modulator Use Cases:**
+
+- **Custom Authentication**: JWT validation, OAuth flows, or proprietary auth schemes
+- **Authorization & Access Control**: Complex permission rules beyond basic channel ACLs
+- **Content Validation**: Message schemas, size limits, or content policies
+- **Message Transformation**: Encryption, compression, or message enrichment
+- **Business Logic**: Game logic, chat moderation, presence systems
+- **Integration**: Bridge with external services, databases, or APIs
 
 ## 🎬 Demo
 
 https://github.com/user-attachments/assets/34baf7d3-4cfa-440d-a6e4-89cb94e922d3
 
+## Features
+
+- **Designed for Edge Applications**: Built specifically for mobile, desktop, or IoT environments
+- **Modular Architecture**: Extend the server with custom application logic via an external modulator
+- **Secure by Default**: TLS/SSL support with automatic certificate generation for development
+- **Channel Management**: Fine-grained access control and configuration per channel
+- **High Performance**: Asynchronous Rust implementation with efficient message routing
+
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust 1.90 or later
 - OpenSSL
 
 ### Installation
@@ -59,26 +84,6 @@ Once the server is running, you can test the connection using OpenSSL:
 ```bash
 openssl s_client -connect 127.0.0.1:22622 -ign_eof
 ```
-
-## What is Narwhal?
-
-Narwhal is a real-time messaging server that implements a protocol designed for scalable pub/sub communication. Unlike traditional message brokers, Narwhal provides a low-level infrastructure that delegates custom application logic to an external **modulator**.
-
-### What is a Modulator?
-
-A modulator is an external service that implements custom application logic on top of Narwhal's messaging layer. Rather than embedding application-specific features in the server, Narwhal delegates these concerns to a modulator, keeping the core server lightweight and focused on message routing.
-
-Each Narwhal server connects to exactly **one modulator**, ensuring consistent application protocol semantics.
-
-**Common Modulator Use Cases:**
-
-- **Custom Authentication**: JWT validation, OAuth flows, or proprietary auth schemes
-- **Authorization & Access Control**: Complex permission rules beyond basic channel ACLs
-- **Content Validation**: Message schemas, size limits, or content policies
-- **Message Transformation**: Encryption, compression, or message enrichment
-- **Business Logic**: Game logic, chat moderation, presence systems
-- **Integration**: Bridge with external services, databases, or APIs
-- **Analytics**: Track user behavior and message patterns
 
 ## Architecture
 
@@ -156,7 +161,7 @@ cargo build --bin narwhal-bench --release
   --producers 1 \
   --consumers 1 \
   --duration 1m \
-  --max-payload-size 16384
+  --max-payload-size 256
 ```
 
 The benchmark tool simulates multiple producer and consumer clients connecting to a Narwhal server and exchanging messages. It reports metrics such as:
