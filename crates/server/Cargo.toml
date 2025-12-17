@@ -2,7 +2,7 @@
 name = "narwhal-server"
 version = "0.3.0"
 edition = "2024"
-license = "AGPL-3.0-only"
+license = "BSD-3-Clause"
 
 # Binary target for the main binary
 [[bin]]
