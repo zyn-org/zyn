@@ -490,7 +490,7 @@ impl crate::Modulator for S2mClient {
   /// # Arguments
   ///
   /// * `request` - A `ForwardEventRequest` containing the event information to be forwarded,
-  ///   including the event kind, channel, zid and owner.
+  ///   including the event kind, channel, nid and owner.
   ///
   /// # Returns
   ///
@@ -506,7 +506,7 @@ impl crate::Modulator for S2mClient {
       id: self.client.next_id().await,
       kind: request.event.kind.into(),
       channel: request.event.channel,
-      zid: request.event.zid,
+      nid: request.event.nid,
       owner: request.event.owner,
     };
 

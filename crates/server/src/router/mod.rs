@@ -2,7 +2,7 @@
 
 use crate::{c2s, transmitter::Resource};
 
-use narwhal_protocol::Zid;
+use narwhal_protocol::Nid;
 use narwhal_util::pool::PoolBuffer;
 
 #[derive(Clone)]
@@ -32,7 +32,7 @@ impl GlobalRouter {
   ///
   /// * `msg` - The protocol message to be routed
   /// * `payload_opt` - Optional payload buffer associated with the message
-  /// * `target` - The Zid of the target destination
+  /// * `target` - The NID of the target destination
   /// * `excluding_resource` - Optional resource to exclude from routing (useful to avoid routing back to sender)
   ///
   /// # Returns
@@ -43,7 +43,7 @@ impl GlobalRouter {
     &self,
     msg: narwhal_protocol::Message,
     payload_opt: Option<PoolBuffer>,
-    target: Zid,
+    target: Nid,
     excluding_resource: Option<Resource>,
   ) -> anyhow::Result<()> {
     self.route_to_many(msg, payload_opt, std::iter::once(&target), excluding_resource).await
@@ -55,7 +55,7 @@ impl GlobalRouter {
   ///
   /// * `msg` - The protocol message to be routed
   /// * `payload_opt` - Optional payload buffer associated with the message
-  /// * `targets` - An iterator of target Zid references
+  /// * `targets` - An iterator of target NID references
   /// * `excluding_resource` - Optional resource to exclude from routing (useful to avoid routing back to sender)
   ///
   /// # Returns
@@ -66,7 +66,7 @@ impl GlobalRouter {
     &self,
     msg: narwhal_protocol::Message,
     payload_opt: Option<PoolBuffer>,
-    targets: impl IntoIterator<Item = &'a Zid>,
+    targets: impl IntoIterator<Item = &'a Nid>,
     excluding_resource: Option<Resource>,
   ) -> anyhow::Result<()> {
     let local_domain = self.c2s_router.local_domain();

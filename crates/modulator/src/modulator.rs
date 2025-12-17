@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 
-use narwhal_protocol::{Event, Zid};
+use narwhal_protocol::{Event, Nid};
 use narwhal_util::pool::PoolBuffer;
 use narwhal_util::string_atom::StringAtom;
 
@@ -204,7 +204,7 @@ pub struct ForwardBroadcastPayloadRequest {
   /// The payload buffer to validate
   pub payload: PoolBuffer,
   /// The sender's user identifier
-  pub from: Zid,
+  pub from: Nid,
   /// The target channel handler
   pub channel_handler: u32,
 }

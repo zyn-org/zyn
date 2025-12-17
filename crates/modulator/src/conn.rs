@@ -14,7 +14,7 @@ use tracing::{error, trace, warn};
 use narwhal_common::conn::{ConnTx, State};
 use narwhal_common::service::{M2sService, S2mService};
 use narwhal_protocol::ErrorReason::{BadRequest, Unauthorized, UnexpectedMessage, UnsupportedProtocolVersion};
-use narwhal_protocol::{Event, S2mModDirectAckParameters, Zid};
+use narwhal_protocol::{Event, Nid, S2mModDirectAckParameters};
 use narwhal_protocol::{
   M2sConnectAckParameters, M2sModDirectAckParameters, Message, S2mAuthAckParameters, S2mConnectAckParameters,
   S2mForwardBroadcastPayloadAckParameters, S2mForwardEventAckParameters,
@@ -770,15 +770,15 @@ impl<M: Modulator> S2mDispatcher<M> {
       _ => unreachable!(),
     };
 
-    let from_zid = match Zid::from_str(params.from.as_ref()) {
-      std::result::Result::Ok(zid) => zid,
+    let from_nid = match Nid::from_str(params.from.as_ref()) {
+      std::result::Result::Ok(nid) => nid,
       std::result::Result::Err(_) => {
         return Err(narwhal_protocol::Error::new(BadRequest).with_id(params.id).into());
       },
     };
 
     // Forward the payload to the modulator and validate it.
-    let forward_req = ForwardBroadcastPayloadRequest { payload, from: from_zid, channel_handler: params.channel };
+    let forward_req = ForwardBroadcastPayloadRequest { payload, from: from_nid, channel_handler: params.channel };
     let forward_resp = self.modulator.forward_broadcast_payload(forward_req).await?;
 
     // Send the reply message and log the result.
@@ -873,7 +873,7 @@ impl<M: Modulator> S2mDispatcher<M> {
       e
     })?;
 
-    let event = Event { kind, channel: params.channel, zid: params.zid, owner: params.owner };
+    let event = Event { kind, channel: params.channel, nid: params.nid, owner: params.owner };
     self.modulator.forward_event(ForwardEventRequest { event }).await?;
 
     self.tx.send_message(Message::S2mForwardEventAck(S2mForwardEventAckParameters { id: params.id }));

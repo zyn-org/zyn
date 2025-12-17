@@ -360,7 +360,7 @@ async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberJoined.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
   );
@@ -588,7 +588,7 @@ async fn test_c2s_leave_on_behalf() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberLeft.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
   );
@@ -624,7 +624,7 @@ async fn test_c2s_leave_as_owner() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberLeft.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_1@localhost")),
+      nid: Some(StringAtom::from("test_user_1@localhost")),
       owner: Some(true)
     }
   );
@@ -635,7 +635,7 @@ async fn test_c2s_leave_as_owner() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberJoined.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(true)
     }
   );

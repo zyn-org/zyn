@@ -15,7 +15,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use narwhal_common::client::{self, Handshaker, SessionInfo};
 use narwhal_common::service::C2sService;
 use narwhal_protocol::{
-  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, QoS, Zid, request,
+  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, Nid, QoS, request,
 };
 use narwhal_util::conn::TlsDialer;
 use narwhal_util::pool::{Pool, PoolBuffer};
@@ -187,7 +187,7 @@ impl std::fmt::Debug for AuthMethod {
 /// Session information returned after successful C2S handshake.
 #[derive(Clone, Debug)]
 pub struct C2sSessionExtraInfo {
-  pub zid: Zid,
+  pub nid: Nid,
 }
 
 /// Handshaker implementation for C2S connections.
@@ -252,13 +252,13 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
     pool = Pool::new(1, session_info.max_message_size as usize);
     message_buff = pool.acquire_buffer().await;
 
-    let zid: Zid;
+    let nid: Nid;
 
     if !auth_required && let Some(username) = self.username.as_ref() {
       let identify_msg = Message::Identify(IdentifyParameters { username: username.as_str().into() });
 
       match request(identify_msg, stream, message_buff).await? {
-        Message::IdentifyAck(params) => zid = Zid::try_from(params.zid)?,
+        Message::IdentifyAck(params) => nid = Nid::try_from(params.nid)?,
         Message::Error(err) => return Err(anyhow!("error during handshake: {:?}", err.reason)),
         _ => return Err(anyhow!("unexpected message during handshake: expected IdentifyAck")),
       }
@@ -274,11 +274,11 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
         match request(auth_msg, stream, message_buff).await? {
           Message::AuthAck(params) => {
             if let Some(succeded) = params.succeeded
-              && let Some(zid_str) = params.zid
+              && let Some(nid_str) = params.nid
               && succeded
             {
               // Authentication succeeded
-              zid = Zid::try_from(zid_str)?;
+              nid = Nid::try_from(nid_str)?;
               break;
             } else if let Some(challenge) = params.challenge {
               // Continue with challenge-response
@@ -301,7 +301,7 @@ impl Handshaker<TlsStream<TcpStream>> for C2sHandshaker {
       return Err(anyhow!("no proper authentication method provided"));
     }
 
-    Ok((session_info, C2sSessionExtraInfo { zid }))
+    Ok((session_info, C2sSessionExtraInfo { nid }))
   }
 }
 

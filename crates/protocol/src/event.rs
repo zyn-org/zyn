@@ -82,17 +82,17 @@ pub struct Event {
   /// The channel associated with the event, if any.
   pub channel: Option<StringAtom>,
 
-  /// The zid associated with the event, if any.
-  pub zid: Option<StringAtom>,
+  /// The nid associated with the event, if any.
+  pub nid: Option<StringAtom>,
 
-  /// Tells whether the zid is the channel owner.
+  /// Tells whether the nid is the channel owner.
   pub owner: Option<bool>,
 }
 
 impl Event {
   /// Creates a new event with the given kind.
   pub fn new(kind: EventKind) -> Self {
-    Event { kind, channel: None, zid: None, owner: None }
+    Event { kind, channel: None, nid: None, owner: None }
   }
 
   /// Sets the channel for the event.
@@ -101,9 +101,9 @@ impl Event {
     self
   }
 
-  /// Sets the zid for the event.
-  pub fn with_zid(mut self, zid: StringAtom) -> Self {
-    self.zid = Some(zid);
+  /// Sets the nid for the event.
+  pub fn with_nid(mut self, nid: StringAtom) -> Self {
+    self.nid = Some(nid);
     self
   }
 
@@ -119,7 +119,7 @@ impl From<Event> for Message {
     Message::Event(EventParameters {
       kind: val.kind.into(),
       channel: val.channel.clone(),
-      zid: val.zid.clone(),
+      nid: val.nid.clone(),
       owner: val.owner,
     })
   }

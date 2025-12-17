@@ -16,7 +16,7 @@ use narwhal_protocol::{
   BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters, JoinChannelAckParameters,
   LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message, MessageParameters, QoS,
 };
-use narwhal_protocol::{ChannelId, Zid};
+use narwhal_protocol::{ChannelId, Nid};
 use narwhal_protocol::{Event, EventKind};
 use narwhal_util::pool::PoolBuffer;
 use narwhal_util::slab::Slab;
@@ -141,7 +141,7 @@ impl ChannelManager {
   ///
   /// # Arguments
   ///
-  /// * `zid` - The user identifier
+  /// * `nid` - The user identifier
   /// * `as_owner` - If true, only lists channels where the user is the owner
   /// * `transmitter` - The transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
@@ -151,7 +151,7 @@ impl ChannelManager {
   /// A result indicating success or failure
   pub async fn list_channels(
     &self,
-    zid: Zid,
+    nid: Nid,
     as_owner: bool,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
@@ -164,12 +164,12 @@ impl ChannelManager {
     // Gather all channels the user is a member of and sort them.
     let mut channel_list: Vec<StringAtom> = Default::default();
 
-    if let Some(in_channels_set) = in_channels.get(&zid.username) {
+    if let Some(in_channels_set) = in_channels.get(&nid.username) {
       for channel_id in in_channels_set.iter() {
         if as_owner {
           let channel_ref = channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
 
-          if channel_ref.read().await.is_owner(&zid) {
+          if channel_ref.read().await.is_owner(&nid) {
             channel_list.push(channel_id.into());
           }
         } else {
@@ -192,7 +192,7 @@ impl ChannelManager {
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier requesting the list
+  /// * `nid` - The user identifier requesting the list
   /// * `transmitter` - The transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -202,7 +202,7 @@ impl ChannelManager {
   pub async fn list_members(
     &self,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -223,11 +223,11 @@ impl ChannelManager {
       .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let channel_guard = channel_ref.read().await;
 
-    if !channel_guard.is_member(&zid) {
+    if !channel_guard.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
     // Gather all members of the channel and sort them.
-    let mut members: Vec<StringAtom> = channel_guard.members.iter().map(|member_zid| member_zid.into()).collect();
+    let mut members: Vec<StringAtom> = channel_guard.members.iter().map(|member_nid| member_nid.into()).collect();
     drop(channel_guard);
 
     members.sort();
@@ -246,7 +246,7 @@ impl ChannelManager {
   ///
   /// # Arguments
   ///
-  /// * `zid` - The user identifier creating the channel
+  /// * `nid` - The user identifier creating the channel
   /// * `transmitter` - The transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -255,14 +255,14 @@ impl ChannelManager {
   /// The ID of the newly created channel
   pub async fn join_new_channel(
     &mut self,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<ChannelId> {
     let mut mng_guard = self.0.write().await;
 
     // Check if maximum number of subscriptions is reached.
-    mng_guard.check_subscription_limit(&zid.username, correlation_id)?;
+    mng_guard.check_subscription_limit(&nid.username, correlation_id)?;
 
     // Acquire a channel.
     let channel_ref_opt = mng_guard.channels.acquire().await;
@@ -293,13 +293,13 @@ impl ChannelManager {
 
     // Insert the member into the channel and update the list of channels
     // the connection is a member of.
-    channel_guard.insert_member(zid.clone());
+    channel_guard.insert_member(nid.clone());
 
     let channel_id =
       ChannelId::new(channel_ref.handler as u32, mng_guard.router.c2s_router().local_domain().clone()).unwrap();
 
     let in_channels = &mut mng_guard.in_channels;
-    in_channels.entry(zid.username.clone()).or_default().insert(channel_id.clone());
+    in_channels.entry(nid.username.clone()).or_default().insert(channel_id.clone());
 
     drop(mng_guard);
 
@@ -317,8 +317,8 @@ impl ChannelManager {
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier to join
-  /// * `zid` - The user identifier joining the channel
-  /// * `oh_behalf_zid` - Optional user identifier to join on behalf of
+  /// * `nid` - The user identifier joining the channel
+  /// * `oh_behalf_nid` - Optional user identifier to join on behalf of
   /// * `transmitter` - The connection transaction for the client
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -328,8 +328,8 @@ impl ChannelManager {
   pub async fn join_channel(
     &mut self,
     channel_id: ChannelId,
-    zid: Zid,
-    oh_behalf_zid: Option<Zid>,
+    nid: Nid,
+    oh_behalf_nid: Option<Nid>,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -349,28 +349,28 @@ impl ChannelManager {
       .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
-    // Get the ZID of the new member.
-    let new_member_zid = {
-      match oh_behalf_zid {
-        Some(oh_behalf_zid) => {
+    // Get the NID of the new member.
+    let new_member_nid = {
+      match oh_behalf_nid {
+        Some(oh_behalf_nid) => {
           // Ensure the client is authorized to join the channel on behalf of another user.
-          if !channel_guard.is_owner(&zid) {
+          if !channel_guard.is_owner(&nid) {
             return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
 
-          if !router.c2s_router().has_connection(&oh_behalf_zid.username) {
+          if !router.c2s_router().has_connection(&oh_behalf_nid.username) {
             return Err(narwhal_protocol::Error::new(UserNotRegistered).with_id(correlation_id).into());
           }
 
-          oh_behalf_zid.clone()
+          oh_behalf_nid.clone()
         },
-        None => zid.clone(),
+        None => nid.clone(),
       }
     };
     // Check if the new member is allowed to join the channel.
     let acl = &channel_guard.acl;
 
-    if !acl.is_join_allowed(&new_member_zid) {
+    if !acl.is_join_allowed(&new_member_nid) {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
@@ -378,19 +378,19 @@ impl ChannelManager {
     // and the channel is not full, and notify all members about the new member.
     let config = &channel_guard.config;
 
-    if channel_guard.is_member(&new_member_zid) {
+    if channel_guard.is_member(&new_member_nid) {
       return Err(narwhal_protocol::Error::new(UserInChannel).with_id(correlation_id).into());
     } else if channel_guard.member_count() >= config.max_clients as usize {
       return Err(narwhal_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
     }
     // Check if the maximum number of subscriptions is reached.
-    mng_guard.check_subscription_limit(&new_member_zid.username, correlation_id)?;
+    mng_guard.check_subscription_limit(&new_member_nid.username, correlation_id)?;
 
-    channel_guard.insert_member(new_member_zid.clone());
+    channel_guard.insert_member(new_member_nid.clone());
 
     channel_guard
       .notify_member_joined(
-        &new_member_zid,
+        &new_member_nid,
         Some(transmitter.resource()),
         false,
         router.c2s_router().local_domain().clone(),
@@ -399,7 +399,7 @@ impl ChannelManager {
 
     // Update the list of channels the connection is a member of.
     let in_channels = &mut mng_guard.in_channels;
-    in_channels.entry(new_member_zid.username.clone()).or_default().insert(channel_id.clone());
+    in_channels.entry(new_member_nid.username.clone()).or_default().insert(channel_id.clone());
 
     drop(mng_guard);
 
@@ -417,8 +417,8 @@ impl ChannelManager {
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier to leave
-  /// * `zid` - The user identifier leaving the channel
-  /// * `on_behalf_zid` - Optional user identifier to leave on behalf of
+  /// * `nid` - The user identifier leaving the channel
+  /// * `on_behalf_nid` - Optional user identifier to leave on behalf of
   /// * `transmitter` - Optional connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -428,8 +428,8 @@ impl ChannelManager {
   pub async fn leave_channel(
     &mut self,
     channel_id: ChannelId,
-    zid: Zid,
-    on_behalf_zid: Option<Zid>,
+    nid: Nid,
+    on_behalf_nid: Option<Nid>,
     transmitter: Option<Arc<dyn Transmitter>>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -450,35 +450,35 @@ impl ChannelManager {
       .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
     let mut channel_guard = channel_ref.write().await;
 
-    let left_member_zid = {
-      match on_behalf_zid {
+    let left_member_nid = {
+      match on_behalf_nid {
         Some(z) => {
-          if !channel_guard.is_owner(&zid) {
+          if !channel_guard.is_owner(&nid) {
             return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
           z
         },
-        None => zid.clone(),
+        None => nid.clone(),
       }
     };
 
-    if !channel_guard.is_member(&left_member_zid) {
+    if !channel_guard.is_member(&left_member_nid) {
       return Err(narwhal_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
 
     // Notify members about the left member, and remove the member from the channel.
-    let as_owner = channel_guard.is_owner(&left_member_zid);
+    let as_owner = channel_guard.is_owner(&left_member_nid);
 
     let resource = transmitter.as_ref().map(|transmitter| transmitter.resource());
 
     channel_guard
-      .notify_member_left(&left_member_zid, resource, as_owner, router.c2s_router().local_domain().clone())
+      .notify_member_left(&left_member_nid, resource, as_owner, router.c2s_router().local_domain().clone())
       .await?;
 
-    channel_guard.remove_member(&left_member_zid);
+    channel_guard.remove_member(&left_member_nid);
 
     // Update the list of channels the connection is a member of.
-    in_channels.remove_if_mut(&left_member_zid.username, |_, in_channels_set| {
+    in_channels.remove_if_mut(&left_member_nid.username, |_, in_channels_set| {
       in_channels_set.remove(&channel_id);
       in_channels_set.is_empty()
     });
@@ -499,10 +499,10 @@ impl ChannelManager {
 
     // If the left member was the owner, pick a new owner (randomly) and notify all members.
     if as_owner {
-      let new_owner_zid = channel_guard.pick_new_owner().unwrap();
+      let new_owner_nid = channel_guard.pick_new_owner().unwrap();
 
       channel_guard
-        .notify_member_joined(&new_owner_zid, None, true, router.c2s_router().local_domain().clone())
+        .notify_member_joined(&new_owner_nid, None, true, router.c2s_router().local_domain().clone())
         .await?;
     }
 
@@ -513,19 +513,19 @@ impl ChannelManager {
   ///
   /// # Arguments
   ///
-  /// * `zid` - The user identifier leaving all channels
+  /// * `nid` - The user identifier leaving all channels
   ///
   /// # Returns
   ///
   /// A result indicating success or failure
-  pub async fn leave_all_channels(&mut self, zid: Zid) -> anyhow::Result<()> {
+  pub async fn leave_all_channels(&mut self, nid: Nid) -> anyhow::Result<()> {
     let mng_guard = self.0.read().await;
     let in_channels = mng_guard.in_channels.clone();
     drop(mng_guard);
 
-    if let Some((_, in_channels_set)) = in_channels.remove(&zid.username) {
+    if let Some((_, in_channels_set)) = in_channels.remove(&nid.username) {
       for channel_id in in_channels_set.iter() {
-        self.leave_channel(channel_id.clone(), zid.clone(), None, None, 0).await?;
+        self.leave_channel(channel_id.clone(), nid.clone(), None, None, 0).await?;
       }
     }
     Ok(())
@@ -536,7 +536,7 @@ impl ChannelManager {
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier requesting the ACL
+  /// * `nid` - The user identifier requesting the ACL
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -546,7 +546,7 @@ impl ChannelManager {
   pub async fn get_channel_acl(
     &self,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -568,7 +568,7 @@ impl ChannelManager {
     let channel_guard = channel_ref.read().await;
 
     // Only owner is allowed to get the channel ACL.
-    if !channel_guard.is_owner(&zid) {
+    if !channel_guard.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
@@ -599,7 +599,7 @@ impl ChannelManager {
   ///
   /// * `acl` - The new ACL configuration
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier setting the ACL
+  /// * `nid` - The user identifier setting the ACL
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -610,7 +610,7 @@ impl ChannelManager {
     &mut self,
     acl: ChannelAcl,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -632,7 +632,7 @@ impl ChannelManager {
     let mut channel_guard = channel_ref.write().await;
 
     // Only the owner of the channel can change its ACL.
-    if !channel_guard.is_owner(&zid) {
+    if !channel_guard.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
@@ -677,7 +677,7 @@ impl ChannelManager {
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier requesting the configuration
+  /// * `nid` - The user identifier requesting the configuration
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -687,7 +687,7 @@ impl ChannelManager {
   pub async fn get_channel_configuration(
     &self,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -703,7 +703,7 @@ impl ChannelManager {
     let channel_guard = channel_ref.read().await;
 
     // Only members of the channel can get its configuration.
-    if !channel_guard.is_member(&zid) {
+    if !channel_guard.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
@@ -728,7 +728,7 @@ impl ChannelManager {
   ///
   /// * `config` - The new channel configuration
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier setting the configuration
+  /// * `nid` - The user identifier setting the configuration
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -739,7 +739,7 @@ impl ChannelManager {
     &mut self,
     config: ChannelConfig,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -763,7 +763,7 @@ impl ChannelManager {
     let mut channel_guard = channel_ref.write().await;
 
     // Only the owner of the channel can change its configuration.
-    if !channel_guard.is_owner(&zid) {
+    if !channel_guard.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Merge the current configuration with the new one.
@@ -788,7 +788,7 @@ impl ChannelManager {
   ///
   /// * `payload` - The payload to broadcast
   /// * `channel_id` - The channel identifier
-  /// * `zid` - The user identifier broadcasting the payload
+  /// * `nid` - The user identifier broadcasting the payload
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -799,7 +799,7 @@ impl ChannelManager {
     &mut self,
     payload: PoolBuffer,
     channel_id: ChannelId,
-    zid: Zid,
+    nid: Nid,
     transmitter: Arc<dyn Transmitter>,
     qos: Option<u8>,
     correlation_id: u32,
@@ -822,13 +822,13 @@ impl ChannelManager {
 
     let channel_guard = channel_ref.read().await;
 
-    if !channel_guard.is_member(&zid) {
+    if !channel_guard.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Check if the member is allowed to publish to the channel.
     let acl = &channel_guard.acl;
 
-    if !acl.is_publish_allowed(&zid) {
+    if !acl.is_publish_allowed(&nid) {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
     let max_payload_size = channel_guard.config.max_payload_size;
@@ -855,7 +855,7 @@ impl ChannelManager {
 
     // Broadcast the payload to all members of the channel, except the sender.
     let msg = Message::Message(MessageParameters {
-      from: (&zid).into(),
+      from: (&nid).into(),
       channel: (&channel_id).into(),
       length: payload_length,
     });
@@ -902,32 +902,32 @@ struct Acl {
 
 impl Acl {
   /// Creates a new ACL.
-  fn new(allow_list: Vec<Zid>) -> Acl {
+  fn new(allow_list: Vec<Nid>) -> Acl {
     let mut allow_lists: HashMap<StringAtom, HashSet<StringAtom>> = HashMap::new();
 
-    for zid in allow_list {
-      let domain = zid.domain.clone();
-      let username = zid.username.clone();
+    for nid in allow_list {
+      let domain = nid.domain.clone();
+      let username = nid.username.clone();
 
       // Get or create the HashSet for this domain
       let domain_users = allow_lists.entry(domain).or_default();
 
       // Only add non-server users
-      if !zid.is_server() {
+      if !nid.is_server() {
         domain_users.insert(username);
       }
     }
     Acl { allow_lists }
   }
 
-  /// Checks if a ZID is allowed based on the ACL.
-  fn is_allowed(&self, zid: &Zid) -> bool {
+  /// Checks if a NID is allowed based on the ACL.
+  fn is_allowed(&self, nid: &Nid) -> bool {
     // If ACL map is empty, access is allowed by default
     if self.allow_lists.is_empty() {
       return true;
     }
-    let domain = zid.domain.clone();
-    let username = zid.username.clone();
+    let domain = nid.domain.clone();
+    let username = nid.username.clone();
 
     if let Some(allowed_users) = self.allow_lists.get(&domain) {
       if allowed_users.is_empty() {
@@ -940,16 +940,16 @@ impl Acl {
   }
 
   /// Returns the ACL allowlist.
-  pub fn allow_list(&self) -> Vec<Zid> {
-    let mut allow_list: Vec<Zid> = Vec::with_capacity(self.allow_lists.len());
+  pub fn allow_list(&self) -> Vec<Nid> {
+    let mut allow_list: Vec<Nid> = Vec::with_capacity(self.allow_lists.len());
 
     for (domain, allowed_users) in self.allow_lists.iter() {
       if !allowed_users.is_empty() {
         for username in allowed_users.iter() {
-          allow_list.push(Zid::new_unchecked(username.clone(), domain.clone()));
+          allow_list.push(Nid::new_unchecked(username.clone(), domain.clone()));
         }
       } else {
-        allow_list.push(Zid::new_unchecked(StringAtom::default(), domain.clone()));
+        allow_list.push(Nid::new_unchecked(StringAtom::default(), domain.clone()));
       }
     }
 
@@ -974,7 +974,7 @@ pub struct ChannelAcl {
 
 impl ChannelAcl {
   /// Creates a new channel ACL.
-  pub fn new(allow_join_list: Vec<Zid>, allow_publish_list: Vec<Zid>, allow_read_list: Vec<Zid>) -> ChannelAcl {
+  pub fn new(allow_join_list: Vec<Nid>, allow_publish_list: Vec<Nid>, allow_read_list: Vec<Nid>) -> ChannelAcl {
     // Return the new ChannelACL instance
     ChannelAcl {
       join_acl: Acl::new(allow_join_list),
@@ -983,19 +983,19 @@ impl ChannelAcl {
     }
   }
 
-  /// Checks if a ZID is allowed to join to the channel.
-  pub fn is_join_allowed(&self, zid: &Zid) -> bool {
-    self.join_acl.is_allowed(zid)
+  /// Checks if a NID is allowed to join to the channel.
+  pub fn is_join_allowed(&self, nid: &Nid) -> bool {
+    self.join_acl.is_allowed(nid)
   }
 
-  /// Checks if a ZID is allowed to publish to the channel.
-  pub fn is_publish_allowed(&self, zid: &Zid) -> bool {
-    self.publish_acl.is_allowed(zid)
+  /// Checks if a NID is allowed to publish to the channel.
+  pub fn is_publish_allowed(&self, nid: &Nid) -> bool {
+    self.publish_acl.is_allowed(nid)
   }
 
-  /// Checks if a ZID is allowed to read from the channel.
-  pub fn is_read_allowed(&self, zid: &Zid) -> bool {
-    self.read_acl.is_allowed(zid)
+  /// Checks if a NID is allowed to read from the channel.
+  pub fn is_read_allowed(&self, nid: &Nid) -> bool {
+    self.read_acl.is_allowed(nid)
   }
 }
 
@@ -1034,7 +1034,7 @@ pub struct ChannelInner {
   handler: u32,
 
   /// The owner of the channel.
-  owner: Option<Zid>,
+  owner: Option<Nid>,
 
   /// The channel configuration.
   config: ChannelConfig,
@@ -1043,10 +1043,10 @@ pub struct ChannelInner {
   acl: ChannelAcl,
 
   /// The members of the channel (including the owner).
-  members: HashSet<Zid>,
+  members: HashSet<Nid>,
 
   /// The channel allowed targets for broadcasting.
-  allowed_targets: Arc<[Zid]>,
+  allowed_targets: Arc<[Nid]>,
 
   /// The notifier for sending events to channel members.
   notifier: Notifier,
@@ -1061,27 +1061,27 @@ impl ChannelInner {
   }
 
   /// Checks if the channel is owned by a certain handler.
-  fn is_owner(&self, zid: &Zid) -> bool {
-    self.owner == Some(zid.clone())
+  fn is_owner(&self, nid: &Nid) -> bool {
+    self.owner == Some(nid.clone())
   }
 
   /// Picks a new owner for the channel.
-  fn pick_new_owner(&mut self) -> Option<Zid> {
+  fn pick_new_owner(&mut self) -> Option<Nid> {
     if self.is_empty() {
       return None;
     }
 
-    let new_owner_zid = self.members.iter().next().unwrap().clone();
+    let new_owner_nid = self.members.iter().next().unwrap().clone();
 
     // Update owner handler.
-    self.owner = Some(new_owner_zid.clone());
+    self.owner = Some(new_owner_nid.clone());
 
-    Some(new_owner_zid)
+    Some(new_owner_nid)
   }
 
   /// Checks if the channel has a certain member.
-  fn is_member(&self, zid: &Zid) -> bool {
-    self.members.contains(zid)
+  fn is_member(&self, nid: &Nid) -> bool {
+    self.members.contains(nid)
   }
 
   /// Returns the number of members in the channel.
@@ -1090,20 +1090,20 @@ impl ChannelInner {
   }
 
   /// Inserts a member into the channel.
-  fn insert_member(&mut self, zid: Zid) {
+  fn insert_member(&mut self, nid: Nid) {
     if self.owner.is_none() {
-      self.owner = Some(zid.clone());
+      self.owner = Some(nid.clone());
     }
-    self.members.insert(zid);
+    self.members.insert(nid);
     self.update_allowed_targets();
   }
 
   /// Removes a member from the channel.
-  fn remove_member(&mut self, zid: &Zid) -> bool {
-    if self.owner == Some(zid.clone()) {
+  fn remove_member(&mut self, nid: &Nid) -> bool {
+    if self.owner == Some(nid.clone()) {
       self.owner = None;
     }
-    let removed = self.members.remove(zid);
+    let removed = self.members.remove(nid);
     self.update_allowed_targets();
     removed
   }
@@ -1123,14 +1123,14 @@ impl ChannelInner {
   /// Updates the allowed targets for broadcasting.
   fn update_allowed_targets(&mut self) {
     let acl = &self.acl;
-    let targets: Vec<Zid> = self.members.iter().filter(|m| acl.is_read_allowed(m)).cloned().collect();
+    let targets: Vec<Nid> = self.members.iter().filter(|m| acl.is_read_allowed(m)).cloned().collect();
     self.allowed_targets = Arc::from(targets);
   }
 
   /// Notifies all members that a new member has joined the channel.
   async fn notify_member_joined(
     &self,
-    zid: &Zid,
+    nid: &Nid,
     excluding_resource: Option<Resource>,
     as_owner: bool,
     local_domain: StringAtom,
@@ -1138,7 +1138,7 @@ impl ChannelInner {
     let channel_id = ChannelId::new_unchecked(self.handler, local_domain);
 
     let event =
-      Event::new(EventKind::MemberJoined).with_channel(channel_id.into()).with_zid(zid.into()).with_owner(as_owner);
+      Event::new(EventKind::MemberJoined).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
 
     self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
 
@@ -1148,7 +1148,7 @@ impl ChannelInner {
   /// Notifies all members that a member has left the channel.
   async fn notify_member_left(
     &self,
-    zid: &Zid,
+    nid: &Nid,
     excluding_resource: Option<Resource>,
     as_owner: bool,
     local_domain: StringAtom,
@@ -1156,7 +1156,7 @@ impl ChannelInner {
     let channel_id = ChannelId::new_unchecked(self.handler, local_domain);
 
     let event =
-      Event::new(EventKind::MemberLeft).with_channel(channel_id.into()).with_zid(zid.into()).with_owner(as_owner);
+      Event::new(EventKind::MemberLeft).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
 
     self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
 

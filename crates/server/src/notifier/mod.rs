@@ -8,7 +8,7 @@ use crate::router::GlobalRouter;
 use crate::transmitter::Resource;
 use narwhal_modulator::Modulator;
 use narwhal_modulator::modulator::Operation;
-use narwhal_protocol::{Event, Zid};
+use narwhal_protocol::{Event, Nid};
 
 /// A notification service that handles routing events to multiple targets.
 ///
@@ -60,7 +60,7 @@ impl Notifier {
   pub async fn notify<'a>(
     &self,
     event: Event,
-    targets: impl IntoIterator<Item = &'a Zid>,
+    targets: impl IntoIterator<Item = &'a Nid>,
     excluding_resource: Option<Resource>,
   ) -> anyhow::Result<()> {
     // Forward the event to the modulator if available

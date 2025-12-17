@@ -91,7 +91,7 @@ pub struct AuthParameters {
 pub struct AuthAckParameters {
   pub challenge: Option<StringAtom>,
   pub succeeded: Option<bool>,
-  pub zid: Option<StringAtom>,
+  pub nid: Option<StringAtom>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -175,7 +175,7 @@ pub struct EventParameters {
 
   pub channel: Option<StringAtom>,
 
-  pub zid: Option<StringAtom>,
+  pub nid: Option<StringAtom>,
   pub owner: Option<bool>,
 }
 
@@ -206,7 +206,7 @@ pub struct IdentifyParameters {
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct IdentifyAckParameters {
   #[param(validate = "non_empty")]
-  pub zid: StringAtom,
+  pub nid: StringAtom,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -449,7 +449,7 @@ pub struct S2mForwardEventParameters {
   #[param(validate = "non_empty")]
   pub kind: StringAtom,
 
-  pub zid: Option<StringAtom>,
+  pub nid: Option<StringAtom>,
 
   pub owner: Option<bool>,
 }

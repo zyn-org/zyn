@@ -166,8 +166,8 @@ mod tests {
             },
             TestCase {
                 name: "AUTH_ACK",
-                msg: Message::AuthAck(AuthAckParameters { succeeded: Some(true), challenge: Some("challenge".into()), zid: Some("test_user@localhost".into()) }),
-                expected_out: Some("AUTH_ACK challenge=challenge succeeded=true zid=test_user@localhost\n".to_string()),
+                msg: Message::AuthAck(AuthAckParameters { succeeded: Some(true), challenge: Some("challenge".into()), nid: Some("test_user@localhost".into()) }),
+                expected_out: Some("AUTH_ACK challenge=challenge nid=test_user@localhost succeeded=true\n".to_string()),
             },
             TestCase {
                 name: "BROADCAST",
@@ -223,8 +223,8 @@ mod tests {
             },
             TestCase {
                 name: "EVENT",
-                msg: Message::Event(EventParameters { kind: "MEMBER_JOINED".into(), channel: Some("!1@localhost".into()), zid: Some("test_user@localhost".into()), owner: Some(true) }),
-                expected_out: Some("EVENT channel=!1@localhost kind=MEMBER_JOINED owner=true zid=test_user@localhost\n".to_string()),
+                msg: Message::Event(EventParameters { kind: "MEMBER_JOINED".into(), channel: Some("!1@localhost".into()), nid: Some("test_user@localhost".into()), owner: Some(true) }),
+                expected_out: Some("EVENT channel=!1@localhost kind=MEMBER_JOINED nid=test_user@localhost owner=true\n".to_string()),
             },
             TestCase {
                 name: "GET_CHAN_ACL",
@@ -243,8 +243,8 @@ mod tests {
             },
             TestCase {
                 name: "IDENTIFY_ACK",
-                msg: Message::IdentifyAck(IdentifyAckParameters { zid: "test_user@localhost".into() }),
-                expected_out: Some("IDENTIFY_ACK zid=test_user@localhost\n".to_string()),
+                msg: Message::IdentifyAck(IdentifyAckParameters { nid: "test_user@localhost".into() }),
+                expected_out: Some("IDENTIFY_ACK nid=test_user@localhost\n".to_string()),
             },
             TestCase {
                 name: "JOIN",
@@ -343,8 +343,8 @@ mod tests {
             },
             TestCase {
                 name: "S2M_FORWARD_EVENT",
-                msg: Message::S2mForwardEvent(S2mForwardEventParameters { id: 1, kind: "MEMBER_JOINED".into(), channel: Some("!1@localhost".into()), zid: Some("test_user@localhost".into()), owner: Some(true) }),
-                expected_out: Some("S2M_FORWARD_EVENT id=1 channel=!1@localhost kind=MEMBER_JOINED owner=true zid=test_user@localhost\n".to_string()),
+                msg: Message::S2mForwardEvent(S2mForwardEventParameters { id: 1, kind: "MEMBER_JOINED".into(), channel: Some("!1@localhost".into()), nid: Some("test_user@localhost".into()), owner: Some(true) }),
+                expected_out: Some("S2M_FORWARD_EVENT id=1 channel=!1@localhost kind=MEMBER_JOINED nid=test_user@localhost owner=true\n".to_string()),
             },
             TestCase {
                 name: "S2M_FORWARD_EVENT_ACK",
