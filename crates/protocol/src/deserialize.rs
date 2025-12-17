@@ -332,7 +332,7 @@ mod tests {
         expected: Ok(Message::Identify(IdentifyParameters { username: StringAtom::from("test") })),
     },
     TestCase { name: "IDENTIFY_ACK", input: b"IDENTIFY_ACK nid=test_user@localhost", expected: Ok(Message::IdentifyAck(IdentifyAckParameters { nid: StringAtom::from("test_user@localhost") })) },
-    TestCase { name: "JOIN", input: b"JOIN id=1 channel=!1@localhost on_behalf=test_user@localhost", expected: Ok(Message::JoinChannel(JoinChannelParameters { id: 1, channel: Some(StringAtom::from("!1@localhost")), on_behalf: Some(StringAtom::from("test_user@localhost")) })) },
+    TestCase { name: "JOIN", input: b"JOIN id=1 channel=!1@localhost on_behalf=test_user@localhost", expected: Ok(Message::JoinChannel(JoinChannelParameters { id: 1, channel: "!1@localhost".into(), on_behalf: Some(StringAtom::from("test_user@localhost")) })) },
     TestCase {
             name: "JOIN_ACK",
             input: b"JOIN_ACK id=1 channel=!1@localhost",
@@ -391,7 +391,7 @@ mod tests {
         },
     TestCase { name: "S2M_FORWARD_EVENT", input: b"S2M_FORWARD_EVENT id=1 kind=MEMBER_JOINED channel=!1@localhost nid=test@localhost owner=true", expected: Ok(Message::S2mForwardEvent(S2mForwardEventParameters { id: 1, kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), nid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
     TestCase { name: "S2M_FORWARD_EVENT_ACK", input: b"S2M_FORWARD_EVENT_ACK id=1", expected: Ok(Message::S2mForwardEventAck(S2mForwardEventAckParameters { id: 1 })) },
-    TestCase { name: "S2M_FORWARD_BROADCAST_PAYLOAD", input: b"S2M_FORWARD_BROADCAST_PAYLOAD id=1 from=ortuman@localhost channel=2 length=12", expected: Ok(Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters { id: 1, from:"ortuman@localhost".into(), channel: 2, length: 12 })) },
+    TestCase { name: "S2M_FORWARD_BROADCAST_PAYLOAD", input: b"S2M_FORWARD_BROADCAST_PAYLOAD id=1 from=ortuman@localhost channel=abc123 length=12", expected: Ok(Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters { id: 1, from:"ortuman@localhost".into(), channel: "abc123".into(), length: 12 })) },
     TestCase { name: "S2M_FORWARD_BROADCAST_PAYLOAD_ACK", input: b"S2M_FORWARD_BROADCAST_PAYLOAD_ACK id=1 valid=true altered_payload=false altered_payload_length=0", expected: Ok(Message::S2mForwardBroadcastPayloadAck(S2mForwardBroadcastPayloadAckParameters { id: 1, valid: true, altered_payload: false, altered_payload_length: 0 })) },
     TestCase { name: "S2M_MOD_DIRECT", input: b"S2M_MOD_DIRECT id=1 from=ortuman@localhost length=10", expected: Ok(Message::S2mModDirect(S2mModDirectParameters { id: 1, from: "ortuman@localhost".into(), length: 10 })) },
     TestCase { name: "S2M_MOD_DIRECT_ACK", input: b"S2M_MOD_DIRECT_ACK id=1 valid=true", expected: Ok(Message::S2mModDirectAck(S2mModDirectAckParameters { id: 1, valid: true })) },

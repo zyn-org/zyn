@@ -11,6 +11,9 @@ use narwhal_util::string_atom::StringAtom;
 /// The maximum length of a username.
 const USERNAME_MAX_LENGTH: usize = 256;
 
+/// The maximum length of a channel handler.
+const CHANNEL_HANDLER_MAX_LENGTH: usize = 256;
+
 const LOCALHOST_DOMAIN: &str = "localhost";
 
 /// The regex used to validate the domain.
@@ -78,7 +81,7 @@ impl std::error::Error for NidParsingError {}
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ChannelId {
   /// The channel handler.
-  pub handler: u32,
+  pub handler: StringAtom,
 
   /// The domain of the channel.
   pub domain: StringAtom,
@@ -91,13 +94,14 @@ pub struct ChannelId {
 
 impl ChannelId {
   /// Creates a new channel ID.
-  pub fn new(handler: u32, domain: StringAtom) -> Result<Self, ChannelIdParsingError> {
+  pub fn new(handler: StringAtom, domain: StringAtom) -> Result<Self, ChannelIdParsingError> {
+    let handler_ref = handler.as_ref();
     let domain_ref = domain.as_ref();
 
-    if !Self::validate(handler, domain_ref) {
+    if !Self::validate(handler_ref, domain_ref) {
       return Err(ChannelIdParsingError::InvalidChannelIdFormat);
     }
-    Ok(Self { handler, domain: domain.clone(), full: Self::full_atom(handler, domain) })
+    Ok(Self { handler: handler.clone(), domain: domain.clone(), full: Self::full_atom(handler, domain) })
   }
 
   /// Creates a new channel ID without validation.
@@ -106,21 +110,24 @@ impl ChannelId {
   ///
   /// This method skips validation checks on the channel and domain.
   /// The caller must ensure that the provided values are valid.
-  pub fn new_unchecked(handler: u32, domain: StringAtom) -> Self {
-    Self { handler, domain: domain.clone(), full: Self::full_atom(handler, domain) }
+  pub fn new_unchecked(handler: StringAtom, domain: StringAtom) -> Self {
+    Self { handler: handler.clone(), domain: domain.clone(), full: Self::full_atom(handler, domain) }
   }
 
   /// Validates a channel ID.
-  fn validate(handler: u32, domain: &str) -> bool {
-    if handler == 0 {
+  fn validate(handler: &str, domain: &str) -> bool {
+    if handler.is_empty() || handler.len() > CHANNEL_HANDLER_MAX_LENGTH {
+      return false;
+    }
+    if !handler.chars().all(|c| c.is_alphanumeric()) {
       return false;
     }
 
     validate_domain(domain)
   }
 
-  fn full_atom(handler: u32, domain: StringAtom) -> StringAtom {
-    StringAtom::from(format!("!{}@{}", handler, domain))
+  fn full_atom(handler: StringAtom, domain: StringAtom) -> StringAtom {
+    format!("!{}@{}", handler, domain).into()
   }
 }
 
@@ -167,19 +174,13 @@ impl FromStr for ChannelId {
 
     // Extract the channel and domain parts
     let channel_str = &full[1..at_pos];
-    let domain = &full[at_pos + 1..];
+    let domain_str = &full[at_pos + 1..];
 
-    // Parse the channel handler
-    let channel_handler = match channel_str.parse::<u32>() {
-      Ok(ch) => ch,
-      Err(_) => return Err(ChannelIdParsingError::InvalidChannelIdFormat),
-    };
-
-    if !Self::validate(channel_handler, domain) {
+    if !Self::validate(channel_str, domain_str) {
       return Err(ChannelIdParsingError::InvalidChannelIdFormat);
     }
 
-    Ok(Self { handler: channel_handler, domain: StringAtom::from(domain), full: StringAtom::from(full) })
+    Ok(Self { handler: channel_str.into(), domain: domain_str.into(), full: StringAtom::from(full) })
   }
 }
 
@@ -303,44 +304,56 @@ mod tests {
 
   #[test]
   fn test_valid_channel_id_from_str() {
-    // Basic valid case
+    // Basic valid case with numeric handler
     let channel_id = ChannelId::from_str("!123@example.com").unwrap();
-    assert_eq!(channel_id.handler, 123);
-    assert_eq!(&channel_id.domain, "example.com");
+    assert_eq!(channel_id.handler.as_ref(), "123");
+    assert_eq!(channel_id.domain.as_ref(), "example.com");
+    assert_eq!(channel_id.to_string(), "!123@example.com");
 
-    // Test with larger channel number
+    // Test with larger handler number
     let channel_id = ChannelId::from_str("!987654321@domain.test").unwrap();
-    assert_eq!(channel_id.handler, 987654321);
-    assert_eq!(&channel_id.domain, "domain.test");
+    assert_eq!(channel_id.handler.as_ref(), "987654321");
+    assert_eq!(channel_id.domain.as_ref(), "domain.test");
+    assert_eq!(channel_id.to_string(), "!987654321@domain.test");
 
     // Test with subdomain
     let channel_id = ChannelId::from_str("!42@sub.example.org").unwrap();
-    assert_eq!(channel_id.handler, 42);
-    assert_eq!(&channel_id.domain, "sub.example.org");
+    assert_eq!(channel_id.handler.as_ref(), "42");
+    assert_eq!(channel_id.domain.as_ref(), "sub.example.org");
+    assert_eq!(channel_id.to_string(), "!42@sub.example.org");
+
+    // Test with alphanumeric handler
+    let channel_id = ChannelId::from_str("!abc123@example.com").unwrap();
+    assert_eq!(channel_id.handler.as_ref(), "abc123");
+    assert_eq!(channel_id.domain.as_ref(), "example.com");
+    assert_eq!(channel_id.to_string(), "!abc123@example.com");
+
+    // Test with localhost domain
+    let channel_id = ChannelId::from_str("!test@localhost").unwrap();
+    assert_eq!(channel_id.handler.as_ref(), "test");
+    assert_eq!(channel_id.domain.as_ref(), "localhost");
+    assert_eq!(channel_id.to_string(), "!test@localhost");
   }
 
   #[test]
   fn test_invalid_channel_id_from_str() {
     // Missing ! prefix
-    assert!(ChannelId::from_str("123@example.com").is_err());
+    assert!(ChannelId::from_str("abc123@example.com").is_err());
 
     // Missing @ symbol
-    assert!(ChannelId::from_str("!123example.com").is_err());
+    assert!(ChannelId::from_str("!abc123example.com").is_err());
 
     // Empty channel
     assert!(ChannelId::from_str("!@example.com").is_err());
 
-    // Invalid channel (not a number)
-    assert!(ChannelId::from_str("!abc@example.com").is_err());
+    // Invalid channel (non-alphanumeric)
+    assert!(ChannelId::from_str("!*abc123*@localhost").is_err());
 
     // Empty domain
-    assert!(ChannelId::from_str("!123@").is_err());
-
-    // Channel ID is 0 (invalid per validate method)
-    assert!(ChannelId::from_str("!0@example.com").is_err());
+    assert!(ChannelId::from_str("!abc123@").is_err());
 
     // Invalid domain format
-    assert!(ChannelId::from_str("!123@invalid..domain").is_err());
+    assert!(ChannelId::from_str("!abc123@invalid..domain").is_err());
   }
 
   #[test]

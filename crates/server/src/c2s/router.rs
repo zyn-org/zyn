@@ -9,7 +9,7 @@ use narwhal_util::string_atom::StringAtom;
 
 use crate::transmitter::Transmitter;
 
-const DEFAULT_ROUTER_SHARD_COUNT: usize = 128;
+const DEFAULT_ROUTER_SHARD_COUNT: usize = 1024;
 
 struct Entry {
   /// The handler ID for this connection.

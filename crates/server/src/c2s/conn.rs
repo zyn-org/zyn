@@ -504,7 +504,7 @@ impl C2sDispatcherInner {
       let request = ForwardBroadcastPayloadRequest {
         payload: altered_payload.clone(),
         from: nid.clone(),
-        channel_handler: channel_id.handler,
+        channel_handler: channel_id.handler.clone(),
       };
       match modulator.forward_broadcast_payload(request).await {
         Ok(forward_res) => match forward_res.result {
@@ -785,9 +785,7 @@ impl C2sDispatcherInner {
     if let Message::JoinChannel(params) = msg {
       correlation_id = params.id;
 
-      if let Some(channel) = params.channel {
-        channel_id = Some(Self::parse_channel_id(&channel)?);
-      }
+      channel_id = Some(Self::parse_channel_id(&params.channel)?);
 
       if let Some(nid_str) = params.on_behalf {
         on_behalf_nid = Some(Self::parse_nid(&nid_str)?);
@@ -797,17 +795,10 @@ impl C2sDispatcherInner {
     let transmitter = self.transmitter.clone();
 
     // Submit the request to join the channel.
-    let mut as_owner = false;
-
-    if let Some(channel_id) = channel_id.as_ref() {
-      self
-        .channel_manager
-        .join_channel(channel_id.clone(), nid.clone(), on_behalf_nid, transmitter, correlation_id)
-        .await?;
-    } else {
-      channel_id = Some(self.channel_manager.join_new_channel(nid.clone(), transmitter, correlation_id).await?);
-      as_owner = true;
-    }
+    let as_owner = self
+      .channel_manager
+      .join_channel(channel_id.as_ref().unwrap().clone(), nid.clone(), on_behalf_nid, transmitter, correlation_id)
+      .await?;
 
     trace!(
       handler = self.transmitter.handler,

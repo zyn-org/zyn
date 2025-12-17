@@ -389,7 +389,7 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
 
   suite.identify(TEST_USER_1).await?;
 
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Broadcast a valid payload.
   suite
@@ -397,7 +397,7 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
       TEST_USER_1,
       Message::Broadcast(BroadcastParameters {
         id: 1,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         qos: None,
         length: 12,
       }),
@@ -416,7 +416,7 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
       TEST_USER_1,
       Message::Broadcast(BroadcastParameters {
         id: 1,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         qos: None,
         length: 12,
       }),
@@ -477,11 +477,11 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
   suite.setup().await?;
 
   suite.identify(TEST_USER_1).await?;
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Join a second user to verify they receive the reversed message
   suite.identify(TEST_USER_2).await?;
-  suite.join_channel(TEST_USER_2, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_2, "!test1@localhost", None).await?;
 
   // User 1 receives an event about User 2 joining
   suite.ignore_reply(TEST_USER_1).await?;
@@ -494,7 +494,7 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
       TEST_USER_1,
       Message::Broadcast(BroadcastParameters {
         id: 2,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         qos: None,
         length: input_text.len() as u32,
       }),
@@ -513,7 +513,7 @@ async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()>
     Message::Message,
     MessageParameters {
       from: StringAtom::from("test_user_1@localhost"),
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       length: reversed_input_text.len() as u32
     }
   );
@@ -558,13 +558,13 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
   let mut suite = C2sSuite::with_modulator(default_c2s_config(), Some(s2m_client.clone()), None);
   suite.setup().await?;
 
-  // User 1 joins and creates a channel (no event should be generated for channel creation)
+  // User 1 joins and creates a channel (no event sent to creator but modulator is notified)
   suite.identify(TEST_USER_1).await?;
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // User 2 joins the same channel - this should trigger a MemberJoined event
   suite.identify(TEST_USER_2).await?;
-  suite.join_channel(TEST_USER_2, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_2, "!test1@localhost", None).await?;
 
   // User 1 receives an event about User 2 joining
   assert_message!(
@@ -572,7 +572,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberJoined.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
@@ -580,14 +580,14 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
 
   // User 3 joins the channel - another MemberJoined event
   suite.identify(TEST_USER_3).await?;
-  suite.join_channel(TEST_USER_3, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_3, "!test1@localhost", None).await?;
 
   // User 1 and User 2 receive events about User 3 joining
   suite.ignore_reply(TEST_USER_1).await?;
   suite.ignore_reply(TEST_USER_2).await?;
 
   // User 2 leaves the channel - this should trigger a MemberLeft event
-  suite.leave_channel(TEST_USER_2, "!1@localhost").await?;
+  suite.leave_channel(TEST_USER_2, "!test1@localhost").await?;
 
   // User 1 and User 3 receive events about User 2 leaving
   assert_message!(
@@ -595,7 +595,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberLeft.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
@@ -606,7 +606,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberLeft.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
@@ -618,25 +618,29 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
 
   // Verify that the modulator received the expected events
   let events = captured_events.lock().await;
-  assert_eq!(events.len(), 3, "expected 3 events to be forwarded to the modulator");
+  assert_eq!(events.len(), 4, "expected 4 events to be forwarded to the modulator");
 
-  // Verify the first event (User 2 joined)
+  // Verify the first event (User 1 joined as owner/channel creator)
   assert_eq!(events[0].kind, narwhal_protocol::EventKind::MemberJoined);
-  assert_eq!(events[0].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[0].nid, Some(StringAtom::from("test_user_2@localhost")));
-  assert_eq!(events[0].owner, Some(false));
+  assert_eq!(events[0].channel, Some(StringAtom::from("!test1@localhost")));
+  assert_eq!(events[0].nid, Some(StringAtom::from("test_user_1@localhost")));
+  assert_eq!(events[0].owner, Some(true));
 
-  // Verify the second event (User 3 joined)
+  // Verify the second event (User 2 joined)
   assert_eq!(events[1].kind, narwhal_protocol::EventKind::MemberJoined);
-  assert_eq!(events[1].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[1].nid, Some(StringAtom::from("test_user_3@localhost")));
-  assert_eq!(events[1].owner, Some(false));
+  assert_eq!(events[1].channel, Some(StringAtom::from("!test1@localhost")));
+  assert_eq!(events[1].nid, Some(StringAtom::from("test_user_2@localhost")));
 
-  // Verify the third event (User 2 left)
-  assert_eq!(events[2].kind, narwhal_protocol::EventKind::MemberLeft);
-  assert_eq!(events[2].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[2].nid, Some(StringAtom::from("test_user_2@localhost")));
-  assert_eq!(events[2].owner, Some(false));
+  // Verify the third event (User 3 joined)
+  assert_eq!(events[2].kind, narwhal_protocol::EventKind::MemberJoined);
+  assert_eq!(events[2].channel, Some(StringAtom::from("!test1@localhost")));
+  assert_eq!(events[2].nid, Some(StringAtom::from("test_user_3@localhost")));
+
+  // Verify the fourth event (User 2 left)
+  assert_eq!(events[3].kind, narwhal_protocol::EventKind::MemberLeft);
+  assert_eq!(events[3].channel, Some(StringAtom::from("!test1@localhost")));
+  assert_eq!(events[3].nid, Some(StringAtom::from("test_user_2@localhost")));
+  assert_eq!(events[3].owner, Some(false));
 
   suite.teardown().await?;
   s2m_ln.shutdown().await?;
@@ -702,7 +706,7 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   conn1
     .write_message(Message::JoinChannel(narwhal_protocol::JoinChannelParameters {
       id: 1234,
-      channel: None,
+      channel: "!test1@localhost".into(),
       on_behalf: None,
     }))
     .await?;
@@ -715,6 +719,10 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   } else {
     panic!("expected JoinChannelAck");
   };
+
+  // conn2 will receive a MemberJoined event since conn1 (same user) joined the channel
+  let event_msg = conn2.read_message().await?;
+  assert!(matches!(event_msg, Message::Event { .. }), "expected Event, got: {:?}", event_msg);
 
   // Drop the first connection
   drop(conn1);

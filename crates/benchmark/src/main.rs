@@ -227,11 +227,14 @@ async fn create_and_join_channel(
   num_producers: usize,
   num_consumers: usize,
 ) -> Result<StringAtom> {
-  // Create a new channel
-  let channel = match clients[0].join_new_channel().await {
-    Ok(ch) => {
-      info!("channel created: {}", ch);
-      ch
+  // Generate a unique channel name using timestamp and random number
+  let channel_id = format!("bench{}@localhost", rand::random::<u32>());
+  let channel: StringAtom = channel_id.into();
+
+  // First client joins and creates the channel
+  match clients[0].join_channel(channel.clone()).await {
+    Ok(()) => {
+      info!("channel created: {}", channel);
     },
     Err(e) => {
       error!("failed to create channel: {}", e);
@@ -268,7 +271,7 @@ async fn create_and_join_channel(
 
       let join_future = async move {
         match client.join_channel(ch).await {
-          Ok(_) => Ok(()),
+          Ok(()) => Ok(()),
           Err(e) => {
             warn!("client failed to join channel: {}", e);
             Err(e)

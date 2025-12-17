@@ -193,16 +193,15 @@ impl C2sSuite {
     Ok(())
   }
 
-  pub async fn join_channel(
-    &mut self,
-    username: &str,
-    channel: Option<&str>,
-    on_behalf: Option<&str>,
-  ) -> anyhow::Result<()> {
-    let channel = channel.map(StringAtom::from);
+  pub async fn join_channel(&mut self, username: &str, channel: &str, on_behalf: Option<&str>) -> anyhow::Result<()> {
     let on_behalf = on_behalf.map(StringAtom::from);
 
-    self.write_message(username, Message::JoinChannel(JoinChannelParameters { id: 1234, channel, on_behalf })).await?;
+    self
+      .write_message(
+        username,
+        Message::JoinChannel(JoinChannelParameters { id: 1234, channel: channel.into(), on_behalf }),
+      )
+      .await?;
 
     // Verify that the server sent the proper join channel ack message.
     let reply = self.read_message(username).await?;

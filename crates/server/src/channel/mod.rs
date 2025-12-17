@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -19,18 +17,19 @@ use narwhal_protocol::{
 use narwhal_protocol::{ChannelId, Nid};
 use narwhal_protocol::{Event, EventKind};
 use narwhal_util::pool::PoolBuffer;
-use narwhal_util::slab::Slab;
 use narwhal_util::string_atom::StringAtom;
 
 use crate::notifier::Notifier;
 use crate::router::GlobalRouter;
 use crate::transmitter::{Resource, Transmitter};
 
+const DASH_MAP_SHARD_COUNT: usize = 1024;
+
 /// The channel manager inner state.
 #[derive(Debug)]
 struct ChannelManagerInner {
   /// The channels.
-  channels: Slab<Channel>,
+  channels: Arc<DashMap<StringAtom, Channel>>,
 
   /// The channels a user is a member of.
   in_channels: Arc<DashMap<StringAtom, HashSet<ChannelId>>>,
@@ -122,13 +121,14 @@ impl ChannelManager {
     max_channels_per_client: u32,
     max_payload_size: u32,
   ) -> Self {
-    let channels = Slab::with_capacity(max_channels as usize);
+    let channels_map = DashMap::with_capacity_and_shard_amount(max_channels as usize, DASH_MAP_SHARD_COUNT);
+    let in_channels = DashMap::with_shard_amount(DASH_MAP_SHARD_COUNT);
 
     let inner = ChannelManagerInner {
       router,
       notifier,
-      channels,
-      in_channels: Arc::default(),
+      channels: Arc::new(channels_map),
+      in_channels: Arc::new(in_channels),
       max_clients_per_channel,
       max_channels_per_client,
       max_payload_size,
@@ -167,10 +167,13 @@ impl ChannelManager {
     if let Some(in_channels_set) = in_channels.get(&nid.username) {
       for channel_id in in_channels_set.iter() {
         if as_owner {
-          let channel_ref = channels.ref_from_handler(channel_id.handler as usize).await.unwrap();
-
-          if channel_ref.read().await.is_owner(&nid) {
-            channel_list.push(channel_id.into());
+          match channels.get(&channel_id.handler) {
+            Some(channel) => {
+              if channel.0.read().await.is_owner(&nid) {
+                channel_list.push(channel_id.into());
+              }
+            },
+            None => continue,
           }
         } else {
           channel_list.push(channel_id.into());
@@ -217,18 +220,23 @@ impl ChannelManager {
     }
 
     // Check if the channel exists and if the originating connection is a member of it.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let channel_guard = channel_ref.read().await;
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let channel_inner = channel.0.read().await;
 
-    if !channel_guard.is_member(&nid) {
+    if !channel_inner.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
     // Gather all members of the channel and sort them.
-    let mut members: Vec<StringAtom> = channel_guard.members.iter().map(|member_nid| member_nid.into()).collect();
-    drop(channel_guard);
+    let mut members: Vec<StringAtom> = channel_inner.members.iter().map(|member_nid| member_nid.into()).collect();
+    drop(channel_inner);
 
     members.sort();
 
@@ -242,89 +250,20 @@ impl ChannelManager {
     Ok(())
   }
 
-  /// Creates and joins a new channel.
-  ///
-  /// # Arguments
-  ///
-  /// * `nid` - The user identifier creating the channel
-  /// * `transmitter` - The transmitter for sending the response
-  /// * `correlation_id` - The correlation ID for the request
-  ///
-  /// # Returns
-  ///
-  /// The ID of the newly created channel
-  pub async fn join_new_channel(
-    &mut self,
-    nid: Nid,
-    transmitter: Arc<dyn Transmitter>,
-    correlation_id: u32,
-  ) -> anyhow::Result<ChannelId> {
-    let mut mng_guard = self.0.write().await;
-
-    // Check if maximum number of subscriptions is reached.
-    mng_guard.check_subscription_limit(&nid.username, correlation_id)?;
-
-    // Acquire a channel.
-    let channel_ref_opt = mng_guard.channels.acquire().await;
-
-    if channel_ref_opt.is_none() {
-      return Err(
-        narwhal_protocol::Error::new(PolicyViolation)
-          .with_id(correlation_id)
-          .with_detail("channel limit reached")
-          .into(),
-      );
-    }
-    let channel_ref = channel_ref_opt.unwrap();
-    let mut channel_guard = channel_ref.write().await;
-
-    // Initialize the channel.
-    let config = mng_guard.default_channel_configuration();
-
-    channel_guard.0 = Some(ChannelInner {
-      handler: channel_ref.handler as u32,
-      owner: None,
-      config,
-      acl: ChannelAcl::default(),
-      members: HashSet::new(),
-      allowed_targets: Arc::default(),
-      notifier: mng_guard.notifier.clone(),
-    });
-
-    // Insert the member into the channel and update the list of channels
-    // the connection is a member of.
-    channel_guard.insert_member(nid.clone());
-
-    let channel_id =
-      ChannelId::new(channel_ref.handler as u32, mng_guard.router.c2s_router().local_domain().clone()).unwrap();
-
-    let in_channels = &mut mng_guard.in_channels;
-    in_channels.entry(nid.username.clone()).or_default().insert(channel_id.clone());
-
-    drop(mng_guard);
-
-    // Send response back to the client.
-    transmitter.send_message(Message::JoinChannelAck(JoinChannelAckParameters {
-      id: correlation_id,
-      channel: (&channel_id).into(),
-    }));
-
-    Ok(channel_id)
-  }
-
-  /// Joins an existing channel.
+  /// Joins a channel.
   ///
   /// # Arguments
   ///
   /// * `channel_id` - The channel identifier to join
   /// * `nid` - The user identifier joining the channel
-  /// * `oh_behalf_nid` - Optional user identifier to join on behalf of
-  /// * `transmitter` - The connection transaction for the client
+  /// * `on_behalf_nid` - Optional user identifier to join on behalf of
+  /// * `transmitter` - The connection transmitter for the client
   /// * `correlation_id` - The correlation ID for the request
   ///
   /// # Returns
   ///
-  /// A result indicating success or failure
+  /// A result containing a boolean that is `true` if the user joined as the channel owner
+  /// (i.e., the channel was created), or `false` if joining an existing channel
   pub async fn join_channel(
     &mut self,
     channel_id: ChannelId,
@@ -332,7 +271,7 @@ impl ChannelManager {
     oh_behalf_nid: Option<Nid>,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
-  ) -> anyhow::Result<()> {
+  ) -> anyhow::Result<bool> {
     let mut mng_guard = self.0.write().await;
 
     let router = mng_guard.router.clone();
@@ -342,19 +281,36 @@ impl ChannelManager {
     if channel_id.domain != router.c2s_router().local_domain() {
       return Err(narwhal_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
-    // Check if the channel handler exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let mut channel_guard = channel_ref.write().await;
+    let handler = channel_id.handler.clone();
+
+    // Check if the channel exists, and create it if it doesn't
+    let mut as_owner = false;
+
+    let entry_ref = channels.entry(handler.clone()).or_insert_with(|| {
+      let channel_inner = ChannelInner {
+        handler: handler.clone(),
+        owner: None,
+        config: mng_guard.default_channel_configuration(),
+        acl: ChannelAcl::default(),
+        members: HashSet::new(),
+        allowed_targets: Arc::default(),
+        notifier: mng_guard.notifier.clone(),
+      };
+
+      as_owner = true;
+
+      Channel(Arc::new(RwLock::new(channel_inner)))
+    });
+    let channel = entry_ref.value().clone();
+
+    let mut channel_inner = channel.0.write().await;
 
     // Get the NID of the new member.
     let new_member_nid = {
       match oh_behalf_nid {
         Some(oh_behalf_nid) => {
           // Ensure the client is authorized to join the channel on behalf of another user.
-          if !channel_guard.is_owner(&nid) {
+          if !channel_inner.is_owner(&nid) {
             return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
 
@@ -368,7 +324,7 @@ impl ChannelManager {
       }
     };
     // Check if the new member is allowed to join the channel.
-    let acl = &channel_guard.acl;
+    let acl = &channel_inner.acl;
 
     if !acl.is_join_allowed(&new_member_nid) {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
@@ -376,26 +332,27 @@ impl ChannelManager {
 
     // Insert the member into the channel in case it is not already a member
     // and the channel is not full, and notify all members about the new member.
-    let config = &channel_guard.config;
+    let config = &channel_inner.config;
 
-    if channel_guard.is_member(&new_member_nid) {
+    if channel_inner.is_member(&new_member_nid) {
       return Err(narwhal_protocol::Error::new(UserInChannel).with_id(correlation_id).into());
-    } else if channel_guard.member_count() >= config.max_clients as usize {
+    } else if channel_inner.member_count() >= config.max_clients as usize {
       return Err(narwhal_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
     }
     // Check if the maximum number of subscriptions is reached.
     mng_guard.check_subscription_limit(&new_member_nid.username, correlation_id)?;
 
-    channel_guard.insert_member(new_member_nid.clone());
+    channel_inner.insert_member(new_member_nid.clone());
 
-    channel_guard
+    channel_inner
       .notify_member_joined(
         &new_member_nid,
         Some(transmitter.resource()),
-        false,
+        as_owner,
         router.c2s_router().local_domain().clone(),
       )
       .await?;
+    drop(channel_inner);
 
     // Update the list of channels the connection is a member of.
     let in_channels = &mut mng_guard.in_channels;
@@ -409,7 +366,7 @@ impl ChannelManager {
       channel: channel_id.into(),
     }));
 
-    Ok(())
+    Ok(as_owner)
   }
 
   /// Leaves a channel.
@@ -443,17 +400,22 @@ impl ChannelManager {
     if channel_id.domain != router.c2s_router().local_domain() {
       return Err(narwhal_protocol::Error::new(NotImplemented).with_id(correlation_id).into());
     }
-    // Check if the channel exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let mut channel_guard = channel_ref.write().await;
+    // Check if the channel exists
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let mut channel_inner = channel.0.write().await;
 
     let left_member_nid = {
       match on_behalf_nid {
         Some(z) => {
-          if !channel_guard.is_owner(&nid) {
+          if !channel_inner.is_owner(&nid) {
             return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
           }
           z
@@ -462,20 +424,20 @@ impl ChannelManager {
       }
     };
 
-    if !channel_guard.is_member(&left_member_nid) {
+    if !channel_inner.is_member(&left_member_nid) {
       return Err(narwhal_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
 
     // Notify members about the left member, and remove the member from the channel.
-    let as_owner = channel_guard.is_owner(&left_member_nid);
+    let as_owner = channel_inner.is_owner(&left_member_nid);
 
     let resource = transmitter.as_ref().map(|transmitter| transmitter.resource());
 
-    channel_guard
+    channel_inner
       .notify_member_left(&left_member_nid, resource, as_owner, router.c2s_router().local_domain().clone())
       .await?;
 
-    channel_guard.remove_member(&left_member_nid);
+    channel_inner.remove_member(&left_member_nid);
 
     // Update the list of channels the connection is a member of.
     in_channels.remove_if_mut(&left_member_nid.username, |_, in_channels_set| {
@@ -489,19 +451,17 @@ impl ChannelManager {
     }
 
     // If the channel is now empty, release it.
-    if channel_guard.is_empty() {
-      drop(channel_guard);
-
-      channel_ref.release().await;
+    if channel_inner.is_empty() {
+      drop(channel_inner);
 
       return Ok(());
     }
 
     // If the left member was the owner, pick a new owner (randomly) and notify all members.
     if as_owner {
-      let new_owner_nid = channel_guard.pick_new_owner().unwrap();
+      let new_owner_nid = channel_inner.pick_new_owner().unwrap();
 
-      channel_guard
+      channel_inner
         .notify_member_joined(&new_owner_nid, None, true, router.c2s_router().local_domain().clone())
         .await?;
     }
@@ -560,26 +520,31 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
-    // Check if the channel exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let channel_guard = channel_ref.read().await;
+    // Check if the channel exists
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let channel_inner = channel.0.read().await;
 
     // Only owner is allowed to get the channel ACL.
-    if !channel_guard.is_owner(&nid) {
+    if !channel_inner.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Obtain the channel's ACL.
-    let acl = &channel_guard.acl;
+    let acl = &channel_inner.acl;
 
     let allow_join: Vec<StringAtom> = acl.join_acl.allow_list().iter().map(|z| z.into()).collect();
     let allow_publish: Vec<StringAtom> = acl.publish_acl.allow_list().iter().map(|z| z.into()).collect();
     let allow_read: Vec<StringAtom> = acl.read_acl.allow_list().iter().map(|z| z.into()).collect();
 
-    drop(channel_guard);
+    drop(channel_inner);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
@@ -624,20 +589,25 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
 
-    // Check if the channel exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let mut channel_guard = channel_ref.write().await;
+    // Check if the channel exists
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let mut channel_inner = channel.0.write().await;
 
     // Only the owner of the channel can change its ACL.
-    if !channel_guard.is_owner(&nid) {
+    if !channel_inner.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Validate the new ACL.
-    let channel_max_clients = channel_guard.config.max_clients as usize;
+    let channel_max_clients = channel_inner.config.max_clients as usize;
 
     let is_valid_acl = {
       let is_valid_join_list = acl.join_acl.allow_list().len() <= channel_max_clients;
@@ -657,8 +627,8 @@ impl ChannelManager {
     }
 
     // Update the channel ACL.
-    channel_guard.set_acl(acl.clone());
-    drop(channel_guard);
+    channel_inner.set_acl(acl.clone());
+    drop(channel_inner);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
@@ -695,21 +665,26 @@ impl ChannelManager {
     let channels = mng_guard.channels.clone();
     drop(mng_guard);
 
-    // Check if the channel exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let channel_guard = channel_ref.read().await;
+    // Check if the channel exists
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let channel_inner = channel.0.read().await;
 
     // Only members of the channel can get its configuration.
-    if !channel_guard.is_member(&nid) {
+    if !channel_inner.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
     // Obtain the channel configuration.
-    let config = channel_guard.config.clone();
-    drop(channel_guard);
+    let config = channel_inner.config.clone();
+    drop(channel_inner);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelConfiguration(ChannelConfigurationParameters {
@@ -756,20 +731,26 @@ impl ChannelManager {
     mng_guard.validate_channel_configuration(&config, correlation_id)?;
     drop(mng_guard);
 
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
-    let mut channel_guard = channel_ref.write().await;
+    // Check if the channel exists
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let mut channel_inner = channel.0.write().await;
 
     // Only the owner of the channel can change its configuration.
-    if !channel_guard.is_owner(&nid) {
+    if !channel_inner.is_owner(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Merge the current configuration with the new one.
-    let new_config = channel_guard.merge_config(&config);
+    let new_config = channel_inner.merge_config(&config);
 
-    drop(channel_guard);
+    drop(channel_inner);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelConfiguration(ChannelConfigurationParameters {
@@ -815,26 +796,30 @@ impl ChannelManager {
     }
 
     // Check if the channel exists.
-    let channel_ref = channels
-      .ref_from_handler(channel_id.handler as usize)
-      .await
-      .ok_or(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id))?;
+    let channel = {
+      match channels.get(&channel_id.handler) {
+        Some(kv) => {
+          let channel = kv.value();
+          (*channel).clone()
+        },
+        None => return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into()),
+      }
+    };
+    let channel_inner = channel.0.read().await;
 
-    let channel_guard = channel_ref.read().await;
-
-    if !channel_guard.is_member(&nid) {
+    if !channel_inner.is_member(&nid) {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Check if the member is allowed to publish to the channel.
-    let acl = &channel_guard.acl;
+    let acl = &channel_inner.acl;
 
     if !acl.is_publish_allowed(&nid) {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
-    let max_payload_size = channel_guard.config.max_payload_size;
+    let max_payload_size = channel_inner.config.max_payload_size;
 
-    let allowed_targets = channel_guard.allowed_targets.clone();
-    drop(channel_guard);
+    let allowed_targets = channel_inner.allowed_targets.clone();
+    drop(channel_inner);
 
     // Validate channel established payload size limit.
     let payload_length = payload.as_slice().len() as u32;
@@ -871,24 +856,143 @@ impl ChannelManager {
 }
 
 /// A channel.
-#[derive(Debug, Default)]
-pub struct Channel(Option<ChannelInner>);
+#[derive(Clone, Debug)]
+pub struct Channel(Arc<RwLock<ChannelInner>>);
 
-// ===== impl Channel =====
+/// The inner state of a channel.
+#[derive(Debug)]
+pub struct ChannelInner {
+  /// The channel handler.
+  handler: StringAtom,
 
-impl Deref for Channel {
-  type Target = ChannelInner;
+  /// The owner of the channel.
+  owner: Option<Nid>,
 
-  fn deref(&self) -> &Self::Target {
-    assert!(self.0.is_some(), "ChannelInner is not initialized");
-    self.0.as_ref().unwrap()
-  }
+  /// The channel configuration.
+  config: ChannelConfig,
+
+  /// The channel ACL.
+  acl: ChannelAcl,
+
+  /// The members of the channel (including the owner).
+  members: HashSet<Nid>,
+
+  /// The channel allowed targets for broadcasting.
+  allowed_targets: Arc<[Nid]>,
+
+  /// The notifier for sending events to channel members.
+  notifier: Notifier,
 }
 
-impl DerefMut for Channel {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    assert!(self.0.is_some(), "ChannelInner is not initialized");
-    self.0.as_mut().unwrap()
+// ===== impl ChannelInner =====
+
+impl ChannelInner {
+  /// Checks if the channel is empty.
+  fn is_empty(&self) -> bool {
+    self.members.is_empty()
+  }
+
+  /// Checks if the channel is owned by a certain handler.
+  fn is_owner(&self, nid: &Nid) -> bool {
+    self.owner == Some(nid.clone())
+  }
+
+  /// Picks a new owner for the channel.
+  fn pick_new_owner(&mut self) -> Option<Nid> {
+    if self.is_empty() {
+      return None;
+    }
+
+    let new_owner_nid = self.members.iter().next().unwrap().clone();
+
+    // Update owner handler.
+    self.owner = Some(new_owner_nid.clone());
+
+    Some(new_owner_nid)
+  }
+
+  /// Checks if the channel has a certain member.
+  fn is_member(&self, nid: &Nid) -> bool {
+    self.members.contains(nid)
+  }
+
+  /// Returns the number of members in the channel.
+  fn member_count(&self) -> usize {
+    self.members.len()
+  }
+
+  /// Inserts a member into the channel.
+  fn insert_member(&mut self, nid: Nid) {
+    if self.owner.is_none() {
+      self.owner = Some(nid.clone());
+    }
+    self.members.insert(nid);
+    self.update_allowed_targets();
+  }
+
+  /// Removes a member from the channel.
+  fn remove_member(&mut self, nid: &Nid) -> bool {
+    if self.owner == Some(nid.clone()) {
+      self.owner = None;
+    }
+    let removed = self.members.remove(nid);
+    self.update_allowed_targets();
+    removed
+  }
+
+  /// Sets the ACL for the channel.
+  fn set_acl(&mut self, acl: ChannelAcl) {
+    self.acl = acl;
+    self.update_allowed_targets();
+  }
+
+  /// Merges the configuration for the channel.
+  fn merge_config(&mut self, config: &ChannelConfig) -> ChannelConfig {
+    self.config = self.config.merge(config);
+    self.config.clone()
+  }
+
+  /// Updates the allowed targets for broadcasting.
+  fn update_allowed_targets(&mut self) {
+    let acl = &self.acl;
+    let targets: Vec<Nid> = self.members.iter().filter(|m| acl.is_read_allowed(m)).cloned().collect();
+    self.allowed_targets = Arc::from(targets);
+  }
+
+  /// Notifies all members that a new member has joined the channel.
+  async fn notify_member_joined(
+    &self,
+    nid: &Nid,
+    excluding_resource: Option<Resource>,
+    as_owner: bool,
+    local_domain: StringAtom,
+  ) -> anyhow::Result<()> {
+    let channel_id = ChannelId::new_unchecked(self.handler.clone(), local_domain);
+
+    let event =
+      Event::new(EventKind::MemberJoined).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
+
+    self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
+
+    Ok(())
+  }
+
+  /// Notifies all members that a member has left the channel.
+  async fn notify_member_left(
+    &self,
+    nid: &Nid,
+    excluding_resource: Option<Resource>,
+    as_owner: bool,
+    local_domain: StringAtom,
+  ) -> anyhow::Result<()> {
+    let channel_id = ChannelId::new_unchecked(self.handler.clone(), local_domain);
+
+    let event =
+      Event::new(EventKind::MemberLeft).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
+
+    self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
+
+    Ok(())
   }
 }
 
@@ -1024,142 +1128,5 @@ impl ChannelConfig {
     }
 
     config
-  }
-}
-
-/// The inner state of a channel.
-#[derive(Debug)]
-pub struct ChannelInner {
-  /// The channel handler.
-  handler: u32,
-
-  /// The owner of the channel.
-  owner: Option<Nid>,
-
-  /// The channel configuration.
-  config: ChannelConfig,
-
-  /// The channel ACL.
-  acl: ChannelAcl,
-
-  /// The members of the channel (including the owner).
-  members: HashSet<Nid>,
-
-  /// The channel allowed targets for broadcasting.
-  allowed_targets: Arc<[Nid]>,
-
-  /// The notifier for sending events to channel members.
-  notifier: Notifier,
-}
-
-// ===== impl ChannelInner =====
-
-impl ChannelInner {
-  /// Checks if the channel is empty.
-  fn is_empty(&self) -> bool {
-    self.members.is_empty()
-  }
-
-  /// Checks if the channel is owned by a certain handler.
-  fn is_owner(&self, nid: &Nid) -> bool {
-    self.owner == Some(nid.clone())
-  }
-
-  /// Picks a new owner for the channel.
-  fn pick_new_owner(&mut self) -> Option<Nid> {
-    if self.is_empty() {
-      return None;
-    }
-
-    let new_owner_nid = self.members.iter().next().unwrap().clone();
-
-    // Update owner handler.
-    self.owner = Some(new_owner_nid.clone());
-
-    Some(new_owner_nid)
-  }
-
-  /// Checks if the channel has a certain member.
-  fn is_member(&self, nid: &Nid) -> bool {
-    self.members.contains(nid)
-  }
-
-  /// Returns the number of members in the channel.
-  fn member_count(&self) -> usize {
-    self.members.len()
-  }
-
-  /// Inserts a member into the channel.
-  fn insert_member(&mut self, nid: Nid) {
-    if self.owner.is_none() {
-      self.owner = Some(nid.clone());
-    }
-    self.members.insert(nid);
-    self.update_allowed_targets();
-  }
-
-  /// Removes a member from the channel.
-  fn remove_member(&mut self, nid: &Nid) -> bool {
-    if self.owner == Some(nid.clone()) {
-      self.owner = None;
-    }
-    let removed = self.members.remove(nid);
-    self.update_allowed_targets();
-    removed
-  }
-
-  /// Sets the ACL for the channel.
-  fn set_acl(&mut self, acl: ChannelAcl) {
-    self.acl = acl;
-    self.update_allowed_targets();
-  }
-
-  /// Merges the configuration for the channel.
-  fn merge_config(&mut self, config: &ChannelConfig) -> ChannelConfig {
-    self.config = self.config.merge(config);
-    self.config.clone()
-  }
-
-  /// Updates the allowed targets for broadcasting.
-  fn update_allowed_targets(&mut self) {
-    let acl = &self.acl;
-    let targets: Vec<Nid> = self.members.iter().filter(|m| acl.is_read_allowed(m)).cloned().collect();
-    self.allowed_targets = Arc::from(targets);
-  }
-
-  /// Notifies all members that a new member has joined the channel.
-  async fn notify_member_joined(
-    &self,
-    nid: &Nid,
-    excluding_resource: Option<Resource>,
-    as_owner: bool,
-    local_domain: StringAtom,
-  ) -> anyhow::Result<()> {
-    let channel_id = ChannelId::new_unchecked(self.handler, local_domain);
-
-    let event =
-      Event::new(EventKind::MemberJoined).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
-
-    self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
-
-    Ok(())
-  }
-
-  /// Notifies all members that a member has left the channel.
-  async fn notify_member_left(
-    &self,
-    nid: &Nid,
-    excluding_resource: Option<Resource>,
-    as_owner: bool,
-    local_domain: StringAtom,
-  ) -> anyhow::Result<()> {
-    let channel_id = ChannelId::new_unchecked(self.handler, local_domain);
-
-    let event =
-      Event::new(EventKind::MemberLeft).with_channel(channel_id.into()).with_nid(nid.into()).with_owner(as_owner);
-
-    self.notifier.notify(event, self.members.iter(), excluding_resource).await?;
-
-    Ok(())
   }
 }

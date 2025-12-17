@@ -206,7 +206,7 @@ pub struct ForwardBroadcastPayloadRequest {
   /// The sender's user identifier
   pub from: Nid,
   /// The target channel handler
-  pub channel_handler: u32,
+  pub channel_handler: StringAtom,
 }
 
 /// Result of validating a broadcast message payload.

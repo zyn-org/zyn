@@ -433,41 +433,13 @@ impl C2sClient {
     use narwhal_protocol::JoinChannelParameters;
 
     let id = self.client.next_id().await;
-    let message = Message::JoinChannel(JoinChannelParameters { id, channel: Some(channel), on_behalf: None });
+    let message = Message::JoinChannel(JoinChannelParameters { id, channel, on_behalf: None });
 
     let handle = self.client.send_message(message, None).await?;
     let (response, _) = handle.await??;
 
     match response {
       Message::JoinChannelAck(_) => Ok(()),
-      Message::Error(err) => Err(anyhow!("failed to join channel: {:?}", err.reason)),
-      _ => Err(anyhow!("unexpected response to join channel request")),
-    }
-  }
-
-  /// Joins a new channel on the server and returns the channel name.
-  ///
-  /// # Returns
-  ///
-  /// Returns the channel name from the server on success.
-  ///
-  /// # Errors
-  ///
-  /// Returns an error if:
-  /// * The server responds with an error
-  /// * The connection fails
-  /// * An unexpected response is received
-  pub async fn join_new_channel(&self) -> anyhow::Result<StringAtom> {
-    use narwhal_protocol::JoinChannelParameters;
-
-    let id = self.client.next_id().await;
-    let message = Message::JoinChannel(JoinChannelParameters { id, channel: None, on_behalf: None });
-
-    let handle = self.client.send_message(message, None).await?;
-    let (response, _) = handle.await??;
-
-    match response {
-      Message::JoinChannelAck(ack) => Ok(ack.channel),
       Message::Error(err) => Err(anyhow!("failed to join channel: {:?}", err.reason)),
       _ => Err(anyhow!("unexpected response to join channel request")),
     }

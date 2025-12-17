@@ -214,7 +214,8 @@ pub struct JoinChannelParameters {
   #[param(validate = "non_zero")]
   pub id: u32,
 
-  pub channel: Option<StringAtom>,
+  #[param(validate = "non_empty")]
+  pub channel: StringAtom,
 
   pub on_behalf: Option<StringAtom>,
 }
@@ -468,8 +469,8 @@ pub struct S2mForwardBroadcastPayloadParameters {
   #[param(validate = "non_empty")]
   pub from: StringAtom,
 
-  #[param(validate = "non_zero")]
-  pub channel: u32,
+  #[param(validate = "non_empty")]
+  pub channel: StringAtom,
 
   #[param(validate = "non_zero")]
   pub length: u32,
