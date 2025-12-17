@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: BSD-3-Clause
 
 use std::net::SocketAddr;
 use std::sync::Arc;

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: BSD-3-Clause
 
 pub mod c2s_suite;
 pub mod m2s_suite;

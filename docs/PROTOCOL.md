@@ -1372,4 +1372,4 @@ Messages that expect responses use an `id` parameter for correlation:
 
 ## License
 
-This protocol is part of the Narwhal project and is licensed under AGPL-3.0.
+This protocol is part of the Narwhal project and is licensed under BSD-3-Clause.
