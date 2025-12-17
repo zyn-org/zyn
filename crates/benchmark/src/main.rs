@@ -242,14 +242,14 @@ async fn create_and_join_channel(
   // Set channel ACL
   let mut allow_publish: Vec<StringAtom> = Vec::with_capacity(num_producers);
   for i in 0..num_producers {
-    let producer_zid = format!("bench_producer_{}@localhost", i);
-    allow_publish.push(producer_zid.into());
+    let producer_nid = format!("bench_producer_{}@localhost", i);
+    allow_publish.push(producer_nid.into());
   }
 
   let mut allow_read: Vec<StringAtom> = Vec::with_capacity(num_consumers);
   for i in 0..num_consumers {
-    let consumer_zid = format!("bench_consumer_{}@localhost", i);
-    allow_read.push(consumer_zid.into());
+    let consumer_nid = format!("bench_consumer_{}@localhost", i);
+    allow_read.push(consumer_nid.into());
   }
 
   match clients[0].set_channel_acl(channel.clone(), Vec::default(), allow_publish, allow_read).await {

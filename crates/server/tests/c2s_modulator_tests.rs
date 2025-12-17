@@ -63,7 +63,7 @@ async fn test_c2s_modulator_single_step_auth() -> anyhow::Result<()> {
   assert_message!(
     tls_socket.read_message().await?,
     Message::AuthAck,
-    AuthAckParameters { challenge: None, succeeded: Some(true), zid: Some(StringAtom::from("test_user@localhost")) }
+    AuthAckParameters { challenge: None, succeeded: Some(true), nid: Some(StringAtom::from("test_user@localhost")) }
   );
 
   suite.teardown().await?;
@@ -105,7 +105,7 @@ async fn test_c2s_modulator_auth_failed() -> anyhow::Result<()> {
   assert_message!(
     tls_socket.read_message().await?,
     Message::AuthAck,
-    AuthAckParameters { challenge: None, succeeded: Some(false), zid: None }
+    AuthAckParameters { challenge: None, succeeded: Some(false), nid: None }
   );
 
   suite.teardown().await?;
@@ -155,7 +155,7 @@ async fn test_c2s_modulator_multi_step_auth() -> anyhow::Result<()> {
   assert_message!(
     tls_socket.read_message().await?,
     Message::AuthAck,
-    AuthAckParameters { challenge: Some(StringAtom::from("provide_second_token")), succeeded: None, zid: None }
+    AuthAckParameters { challenge: Some(StringAtom::from("provide_second_token")), succeeded: None, nid: None }
   );
 
   // Send second AUTH message with second token
@@ -168,7 +168,7 @@ async fn test_c2s_modulator_multi_step_auth() -> anyhow::Result<()> {
     AuthAckParameters {
       challenge: None,
       succeeded: Some(true),
-      zid: Some(StringAtom::from("authenticated_user@localhost"))
+      nid: Some(StringAtom::from("authenticated_user@localhost"))
     }
   );
 
@@ -367,7 +367,7 @@ async fn test_c2s_modulator_receive_private_payload() -> anyhow::Result<()> {
 async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()> {
   // Create a modulator that validates payloads - only accepts payloads that contain "valid"
   let modulator =
-    TestModulator::new().with_forward_message_payload_handler(|payload, _zid, _channel_handler| async move {
+    TestModulator::new().with_forward_message_payload_handler(|payload, _nid, _channel_handler| async move {
       // Only accept payloads that contain "valid"
       let payload_str = std::str::from_utf8(payload.as_slice()).unwrap_or("");
       let is_valid = payload_str.contains("valid");
@@ -443,7 +443,7 @@ async fn test_c2s_modulator_broadcast_payload_validation() -> anyhow::Result<()>
 async fn test_c2s_modulator_broadcast_payload_alteration() -> anyhow::Result<()> {
   // Create a modulator that reverses the payload text
   let modulator =
-    TestModulator::new().with_forward_message_payload_handler(|payload, _zid, _channel_handler| async move {
+    TestModulator::new().with_forward_message_payload_handler(|payload, _nid, _channel_handler| async move {
       // Convert payload to string and reverse it
       let payload_str = std::str::from_utf8(payload.as_slice()).unwrap_or("");
       let reversed = payload_str.chars().rev().collect::<String>();
@@ -573,7 +573,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberJoined.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
   );
@@ -596,7 +596,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberLeft.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
   );
@@ -607,7 +607,7 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
     EventParameters {
       kind: MemberLeft.into(),
       channel: Some(StringAtom::from("!1@localhost")),
-      zid: Some(StringAtom::from("test_user_2@localhost")),
+      nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
   );
@@ -623,19 +623,19 @@ async fn test_c2s_modulator_forward_event() -> anyhow::Result<()> {
   // Verify the first event (User 2 joined)
   assert_eq!(events[0].kind, narwhal_protocol::EventKind::MemberJoined);
   assert_eq!(events[0].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[0].zid, Some(StringAtom::from("test_user_2@localhost")));
+  assert_eq!(events[0].nid, Some(StringAtom::from("test_user_2@localhost")));
   assert_eq!(events[0].owner, Some(false));
 
   // Verify the second event (User 3 joined)
   assert_eq!(events[1].kind, narwhal_protocol::EventKind::MemberJoined);
   assert_eq!(events[1].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[1].zid, Some(StringAtom::from("test_user_3@localhost")));
+  assert_eq!(events[1].nid, Some(StringAtom::from("test_user_3@localhost")));
   assert_eq!(events[1].owner, Some(false));
 
   // Verify the third event (User 2 left)
   assert_eq!(events[2].kind, narwhal_protocol::EventKind::MemberLeft);
   assert_eq!(events[2].channel, Some(StringAtom::from("!1@localhost")));
-  assert_eq!(events[2].zid, Some(StringAtom::from("test_user_2@localhost")));
+  assert_eq!(events[2].nid, Some(StringAtom::from("test_user_2@localhost")));
   assert_eq!(events[2].owner, Some(false));
 
   suite.teardown().await?;
@@ -676,7 +676,7 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
     narwhal_protocol::AuthAckParameters {
       challenge: None,
       succeeded: Some(true),
-      zid: Some(StringAtom::from("test_user_1@localhost"))
+      nid: Some(StringAtom::from("test_user_1@localhost"))
     }
   );
 
@@ -694,7 +694,7 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
     narwhal_protocol::AuthAckParameters {
       challenge: None,
       succeeded: Some(true),
-      zid: Some(StringAtom::from("test_user_1@localhost"))
+      nid: Some(StringAtom::from("test_user_1@localhost"))
     }
   );
 

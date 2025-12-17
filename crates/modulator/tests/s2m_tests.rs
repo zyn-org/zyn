@@ -398,7 +398,7 @@ async fn test_s2m_forward_event() -> anyhow::Result<()> {
       id: 1,
       kind: EventKind::MemberJoined.into(),
       channel: None,
-      zid: None,
+      nid: None,
       owner: None,
     }))
     .await?;

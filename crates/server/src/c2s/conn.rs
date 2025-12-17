@@ -20,7 +20,7 @@ use narwhal_protocol::ErrorReason::{
 use narwhal_protocol::{
   AuthAckParameters, ConnectAckParameters, IdentifyAckParameters, Message, ModDirectAckParameters,
 };
-use narwhal_protocol::{ChannelId, Zid};
+use narwhal_protocol::{ChannelId, Nid};
 use narwhal_util::pool::PoolBuffer;
 use narwhal_util::slab::{Slab, SlabRef};
 use narwhal_util::string_atom::StringAtom;
@@ -178,7 +178,7 @@ impl C2sDispatcher {
       channel_manager,
       c2s_router,
       heartbeat_interval: Default::default(),
-      zid: None,
+      nid: None,
       transmitter: Arc::new(C2sTransmitter::new(handler, conn_tx)),
       modulator,
       auth_required,
@@ -208,8 +208,8 @@ struct C2sDispatcherInner {
   /// The channel manager.
   channel_manager: ChannelManager,
 
-  /// The ZID assigned to the connection.
-  zid: Option<Zid>,
+  /// The NID assigned to the connection.
+  nid: Option<Nid>,
 
   /// The negotiated heartbeat interval.
   heartbeat_interval: Duration,
@@ -315,9 +315,9 @@ impl C2sDispatcherInner {
         match self.modulator.as_ref().unwrap().authenticate(AuthRequest { token: params.token }).await {
           Ok(auth_res) => match auth_res.result {
             AuthResult::Success { username } => {
-              let zid = {
-                match self.make_local_zid(username.clone()) {
-                  Ok(zid) => zid,
+              let nid = {
+                match self.make_local_nid(username.clone()) {
+                  Ok(nid) => nid,
                   Err(e) => {
                     return Err(narwhal_protocol::Error::new(InternalServerError).with_detail(e.to_string()).into());
                   },
@@ -326,21 +326,21 @@ impl C2sDispatcherInner {
 
               // Register the connection non-exclusively.
               let _ = self.c2s_router.register_connection(
-                zid.username.clone(),
+                nid.username.clone(),
                 self.transmitter.clone(),
                 self.transmitter.handler,
                 false,
               );
 
-              self.zid = Some(zid.clone());
+              self.nid = Some(nid.clone());
 
               self.transmitter.send_message(Message::AuthAck(AuthAckParameters {
                 challenge: None,
                 succeeded: Some(true),
-                zid: Some(zid.clone().into()),
+                nid: Some(nid.clone().into()),
               }));
 
-              trace!(handler = self.transmitter.handler, zid = zid.to_string(), "user authenticated");
+              trace!(handler = self.transmitter.handler, nid = nid.to_string(), "user authenticated");
 
               Ok(true)
             },
@@ -348,7 +348,7 @@ impl C2sDispatcherInner {
               self.transmitter.send_message(Message::AuthAck(AuthAckParameters {
                 challenge: Some(challenge),
                 succeeded: None,
-                zid: None,
+                nid: None,
               }));
 
               Ok(false)
@@ -357,7 +357,7 @@ impl C2sDispatcherInner {
               self.transmitter.send_message(Message::AuthAck(AuthAckParameters {
                 challenge: None,
                 succeeded: Some(false),
-                zid: None,
+                nid: None,
               }));
 
               Ok(false)
@@ -375,9 +375,9 @@ impl C2sDispatcherInner {
         // Check if the username is already in use.
         let username = params.username.trim();
 
-        let zid = {
-          match self.make_local_zid(username.into()) {
-            Ok(zid) => zid,
+        let nid = {
+          match self.make_local_nid(username.into()) {
+            Ok(nid) => nid,
             Err(e) => {
               return Err(narwhal_protocol::Error::new(BadRequest).with_detail(e.to_string()).into());
             },
@@ -386,21 +386,21 @@ impl C2sDispatcherInner {
 
         // Register the connection exclusively.
         if self.c2s_router.register_connection(
-          zid.username.clone(),
+          nid.username.clone(),
           self.transmitter.clone(),
           self.transmitter.handler,
           true,
         ) {
-          self.zid = Some(zid);
+          self.nid = Some(nid);
         } else {
           return Err(narwhal_protocol::Error::new(UsernameInUse).into());
         }
 
-        let zid = self.zid.as_ref().unwrap();
+        let nid = self.nid.as_ref().unwrap();
 
-        self.transmitter.send_message(Message::IdentifyAck(IdentifyAckParameters { zid: StringAtom::from(zid) }));
+        self.transmitter.send_message(Message::IdentifyAck(IdentifyAckParameters { nid: StringAtom::from(nid) }));
 
-        trace!(handler = self.transmitter.handler, zid = zid.to_string(), "user identified");
+        trace!(handler = self.transmitter.handler, nid = nid.to_string(), "user identified");
 
         Ok(true)
       },
@@ -494,7 +494,7 @@ impl C2sDispatcherInner {
     }
     let channel_id = channel_id.unwrap();
 
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     // Forward the payload to the modulator (if available) for validation and alteration.
@@ -503,7 +503,7 @@ impl C2sDispatcherInner {
     if let Some(modulator) = self.modulator.as_ref() {
       let request = ForwardBroadcastPayloadRequest {
         payload: altered_payload.clone(),
-        from: zid.clone(),
+        from: nid.clone(),
         channel_handler: channel_id.handler,
       };
       match modulator.forward_broadcast_payload(request).await {
@@ -521,7 +521,7 @@ impl C2sDispatcherInner {
         Err(e) => {
           error!(
             handler = self.transmitter.handler,
-            zid = zid.to_string(),
+            nid = nid.to_string(),
             channel = channel_id.to_string(),
             error = e.to_string(),
             "payload validation failed"
@@ -536,12 +536,12 @@ impl C2sDispatcherInner {
 
     self
       .channel_manager
-      .broadcast_payload(altered_payload, channel_id.clone(), zid.clone(), transmitter, qos, correlation_id)
+      .broadcast_payload(altered_payload, channel_id.clone(), nid.clone(), transmitter, qos, correlation_id)
       .await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       content_length = payload_length,
       "broadcasted payload"
@@ -573,17 +573,17 @@ impl C2sDispatcherInner {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
 
     // Submit the request to get the channel ACL.
-    self.channel_manager.get_channel_acl(channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
+    self.channel_manager.get_channel_acl(channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       "got channel ACL"
     );
@@ -614,7 +614,7 @@ impl C2sDispatcherInner {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
@@ -622,12 +622,12 @@ impl C2sDispatcherInner {
     // Submit the request to get the channel configuration.
     self
       .channel_manager
-      .get_channel_configuration(channel_id.clone(), zid.clone(), transmitter, correlation_id)
+      .get_channel_configuration(channel_id.clone(), nid.clone(), transmitter, correlation_id)
       .await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       "got channel configuration"
     );
@@ -663,19 +663,19 @@ impl C2sDispatcherInner {
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
 
       let allow_join_list = {
-        match params.allow_join.into_iter().map(|s| Self::parse_zid(&s)).collect() {
+        match params.allow_join.into_iter().map(|s| Self::parse_nid(&s)).collect() {
           Ok(list) => list,
           Err(e) => return Err(e),
         }
       };
       let allow_publish_list = {
-        match params.allow_publish.into_iter().map(|s| Self::parse_zid(&s)).collect() {
+        match params.allow_publish.into_iter().map(|s| Self::parse_nid(&s)).collect() {
           Ok(list) => list,
           Err(e) => return Err(e),
         }
       };
       let allow_read_list = {
-        match params.allow_read.into_iter().map(|s| Self::parse_zid(&s)).collect() {
+        match params.allow_read.into_iter().map(|s| Self::parse_nid(&s)).collect() {
           Ok(list) => list,
           Err(e) => return Err(e),
         }
@@ -683,17 +683,17 @@ impl C2sDispatcherInner {
 
       acl = ChannelAcl::new(allow_join_list, allow_publish_list, allow_read_list);
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
 
     // Submit the request to set the channel ACL.
-    self.channel_manager.set_channel_acl(acl, channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
+    self.channel_manager.set_channel_acl(acl, channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       "set channel ACL"
     );
@@ -733,7 +733,7 @@ impl C2sDispatcherInner {
       channel_config.max_clients = params.max_clients;
       channel_config.max_payload_size = params.max_payload_size;
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
@@ -741,12 +741,12 @@ impl C2sDispatcherInner {
     // Submit the request to set the channel configuration.
     self
       .channel_manager
-      .set_channel_configuration(channel_config, channel_id.clone(), zid.clone(), transmitter, correlation_id)
+      .set_channel_configuration(channel_config, channel_id.clone(), nid.clone(), transmitter, correlation_id)
       .await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       "set channel configuration"
     );
@@ -780,7 +780,7 @@ impl C2sDispatcherInner {
 
     let mut channel_id: Option<ChannelId> = None;
     let mut correlation_id: u32 = 0;
-    let mut on_behalf_zid: Option<Zid> = None;
+    let mut on_behalf_nid: Option<Nid> = None;
 
     if let Message::JoinChannel(params) = msg {
       correlation_id = params.id;
@@ -789,11 +789,11 @@ impl C2sDispatcherInner {
         channel_id = Some(Self::parse_channel_id(&channel)?);
       }
 
-      if let Some(zid_str) = params.on_behalf {
-        on_behalf_zid = Some(Self::parse_zid(&zid_str)?);
+      if let Some(nid_str) = params.on_behalf {
+        on_behalf_nid = Some(Self::parse_nid(&nid_str)?);
       }
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     // Submit the request to join the channel.
@@ -802,16 +802,16 @@ impl C2sDispatcherInner {
     if let Some(channel_id) = channel_id.as_ref() {
       self
         .channel_manager
-        .join_channel(channel_id.clone(), zid.clone(), on_behalf_zid, transmitter, correlation_id)
+        .join_channel(channel_id.clone(), nid.clone(), on_behalf_nid, transmitter, correlation_id)
         .await?;
     } else {
-      channel_id = Some(self.channel_manager.join_new_channel(zid.clone(), transmitter, correlation_id).await?);
+      channel_id = Some(self.channel_manager.join_new_channel(nid.clone(), transmitter, correlation_id).await?);
       as_owner = true;
     }
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.unwrap().to_string(),
       as_owner = as_owner,
       "joined channel"
@@ -843,17 +843,17 @@ impl C2sDispatcherInner {
 
     let mut channel_id: Option<ChannelId> = None;
     let mut correlation_id: u32 = 0;
-    let mut on_behalf_zid: Option<Zid> = None;
+    let mut on_behalf_nid: Option<Nid> = None;
 
     if let Message::LeaveChannel(params) = msg {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
 
-      if let Some(zid_str) = params.on_behalf {
-        on_behalf_zid = Some(Self::parse_zid(&zid_str)?);
+      if let Some(nid_str) = params.on_behalf {
+        on_behalf_nid = Some(Self::parse_nid(&nid_str)?);
       }
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
@@ -861,10 +861,10 @@ impl C2sDispatcherInner {
     // Submit the request to leave the channel.
     self
       .channel_manager
-      .leave_channel(channel_id.clone(), zid.clone(), on_behalf_zid, Some(transmitter), correlation_id)
+      .leave_channel(channel_id.clone(), nid.clone(), on_behalf_nid, Some(transmitter), correlation_id)
       .await?;
 
-    trace!(handler = self.transmitter.handler, zid = zid.to_string(), channel = channel_id.to_string(), "left channel");
+    trace!(handler = self.transmitter.handler, nid = nid.to_string(), channel = channel_id.to_string(), "left channel");
 
     Ok(())
   }
@@ -890,13 +890,13 @@ impl C2sDispatcherInner {
       correlation_id = params.id;
       as_owner = params.owner;
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     // Submit the request to list the channels.
-    self.channel_manager.list_channels(zid.clone(), as_owner, transmitter, correlation_id).await?;
+    self.channel_manager.list_channels(nid.clone(), as_owner, transmitter, correlation_id).await?;
 
-    trace!(handler = self.transmitter.handler, zid = zid.to_string(), as_owner = as_owner, "listed channels");
+    trace!(handler = self.transmitter.handler, nid = nid.to_string(), as_owner = as_owner, "listed channels");
 
     Ok(())
   }
@@ -926,17 +926,17 @@ impl C2sDispatcherInner {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
     }
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     let channel_id = channel_id.unwrap();
 
     // Submit the request to list the members.
-    self.channel_manager.list_members(channel_id.clone(), zid.clone(), transmitter, correlation_id).await?;
+    self.channel_manager.list_members(channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
 
     trace!(
       handler = self.transmitter.handler,
-      zid = zid.to_string(),
+      nid = nid.to_string(),
       channel = channel_id.to_string(),
       "listed members"
     );
@@ -981,9 +981,9 @@ impl C2sDispatcherInner {
       }
     };
 
-    let zid = self.zid.as_ref().unwrap().clone();
+    let nid = self.nid.as_ref().unwrap().clone();
 
-    let request = SendPrivatePayloadRequest { payload, from: zid.username.clone() };
+    let request = SendPrivatePayloadRequest { payload, from: nid.username.clone() };
     let response = modulator.send_private_payload(request).await?;
     if matches!(response.result, SendPrivatePayloadResult::Invalid) {
       return Err(narwhal_protocol::Error::new(BadRequest).with_id(correlation_id).into());
@@ -993,14 +993,14 @@ impl C2sDispatcherInner {
     // Send the response back to the client.
     transmitter.send_message(Message::ModDirectAck(ModDirectAckParameters { id: correlation_id }));
 
-    trace!(handler = transmitter.handler, zid = zid.to_string(), "modulator payload forwarded");
+    trace!(handler = transmitter.handler, nid = nid.to_string(), "modulator payload forwarded");
 
     Ok(())
   }
 
-  fn make_local_zid(&self, username: StringAtom) -> anyhow::Result<Zid> {
-    match Zid::new(username, StringAtom::from(self.config.listener.domain.as_str())) {
-      Ok(zid) => Ok(zid),
+  fn make_local_nid(&self, username: StringAtom) -> anyhow::Result<Nid> {
+    match Nid::new(username, StringAtom::from(self.config.listener.domain.as_str())) {
+      Ok(nid) => Ok(nid),
       Err(e) => Err(anyhow::Error::new(e)),
     }
   }
@@ -1012,9 +1012,9 @@ impl C2sDispatcherInner {
     }
   }
 
-  fn parse_zid(s: &str) -> anyhow::Result<Zid> {
-    match Zid::from_str(s) {
-      Ok(zid) => Ok(zid),
+  fn parse_nid(s: &str) -> anyhow::Result<Nid> {
+    match Nid::from_str(s) {
+      Ok(nid) => Ok(nid),
       Err(e) => Err(narwhal_protocol::Error::new(BadRequest).with_detail(e.to_string()).into()),
     }
   }
@@ -1055,15 +1055,15 @@ impl narwhal_common::conn::Dispatcher for C2sDispatcher {
   async fn shutdown(&mut self) -> anyhow::Result<()> {
     let inner = self.0.as_mut().unwrap();
 
-    if let Some(zid) = inner.zid.take() {
+    if let Some(nid) = inner.nid.take() {
       let mut channel_mng = inner.channel_manager.clone();
 
       // Unregister the username.
       inner
         .c2s_router
-        .unregister_connection(&zid.username, inner.transmitter.handler, || async {
+        .unregister_connection(&nid.username, inner.transmitter.handler, || async {
           // Leave from all channels when last connection is closed.
-          channel_mng.leave_all_channels(zid.clone()).await?;
+          channel_mng.leave_all_channels(nid.clone()).await?;
 
           Ok::<(), anyhow::Error>(())
         })

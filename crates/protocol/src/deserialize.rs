@@ -277,7 +277,7 @@ mod tests {
 
     let test_cases = vec![
     TestCase { name: "AUTH", input: b"AUTH id=1 token=a_token", expected: Ok(Message::Auth(AuthParameters {  token: StringAtom::from("a_token") })) },
-    TestCase { name: "AUTH_ACK", input: b"AUTH_ACK id=1 succeeded=false challenge=1234567890 username=test_user zid=test_user@localhost", expected: Ok(Message::AuthAck(AuthAckParameters {  succeeded: Some(false), challenge: Some(StringAtom::from("1234567890")),  zid: Some(StringAtom::from("test_user@localhost")) })) },
+    TestCase { name: "AUTH_ACK", input: b"AUTH_ACK id=1 succeeded=false challenge=1234567890 username=test_user nid=test_user@localhost", expected: Ok(Message::AuthAck(AuthAckParameters {  succeeded: Some(false), challenge: Some(StringAtom::from("1234567890")),  nid: Some(StringAtom::from("test_user@localhost")) })) },
     TestCase { name: "BROADCAST", input: b"BROADCAST id=1 channel=!1@localhost length=10 qos=1", expected: Ok(Message::Broadcast(BroadcastParameters { id: 1, channel: StringAtom::from("!1@localhost"), qos: Some(1), length: 10 })) },
     TestCase { name: "BROADCAST_ACK", input: b"BROADCAST_ACK id=1", expected: Ok(Message::BroadcastAck(BroadcastAckParameters { id: 1 })) },
     TestCase {
@@ -323,7 +323,7 @@ mod tests {
                 detail: Some(StringAtom::from("error detail")),
             })),
         },
-    TestCase { name: "EVENT", input: b"EVENT kind=MEMBER_JOINED channel=!1@localhost zid=test@localhost owner=true", expected: Ok(Message::Event(EventParameters { kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), zid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
+    TestCase { name: "EVENT", input: b"EVENT kind=MEMBER_JOINED channel=!1@localhost nid=test@localhost owner=true", expected: Ok(Message::Event(EventParameters { kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), nid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
     TestCase { name: "GET_CHAN_ACL", input: b"GET_CHAN_ACL id=1 channel=!1@localhost", expected: Ok(Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: StringAtom::from("!1@localhost") })) },
     TestCase { name: "GET_CHAN_CONFIG", input: b"GET_CHAN_CONFIG id=1 channel=!1@localhost", expected: Ok(Message::GetChannelConfiguration(GetChannelConfigurationParameters { id: 1, channel: StringAtom::from("!1@localhost") })) },
     TestCase {
@@ -331,7 +331,7 @@ mod tests {
         input: b"IDENTIFY username=test",
         expected: Ok(Message::Identify(IdentifyParameters { username: StringAtom::from("test") })),
     },
-    TestCase { name: "IDENTIFY_ACK", input: b"IDENTIFY_ACK zid=test_user@localhost", expected: Ok(Message::IdentifyAck(IdentifyAckParameters { zid: StringAtom::from("test_user@localhost") })) },
+    TestCase { name: "IDENTIFY_ACK", input: b"IDENTIFY_ACK nid=test_user@localhost", expected: Ok(Message::IdentifyAck(IdentifyAckParameters { nid: StringAtom::from("test_user@localhost") })) },
     TestCase { name: "JOIN", input: b"JOIN id=1 channel=!1@localhost on_behalf=test_user@localhost", expected: Ok(Message::JoinChannel(JoinChannelParameters { id: 1, channel: Some(StringAtom::from("!1@localhost")), on_behalf: Some(StringAtom::from("test_user@localhost")) })) },
     TestCase {
             name: "JOIN_ACK",
@@ -389,7 +389,7 @@ mod tests {
             input: b"S2M_CONNECT_ACK application_protocol=my-proto/1.0 operations:1=auth heartbeat_interval=20000 max_inflight_requests=100 max_message_size=8192 max_payload_size=262144",
             expected: Ok(Message::S2mConnectAck(S2mConnectAckParameters { application_protocol: "my-proto/1.0".into(), operations: Vec::from([StringAtom::from("auth")].as_slice()), heartbeat_interval: 20000, max_inflight_requests: 100, max_message_size: 8192, max_payload_size: 262144 }),),
         },
-    TestCase { name: "S2M_FORWARD_EVENT", input: b"S2M_FORWARD_EVENT id=1 kind=MEMBER_JOINED channel=!1@localhost zid=test@localhost owner=true", expected: Ok(Message::S2mForwardEvent(S2mForwardEventParameters { id: 1, kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), zid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
+    TestCase { name: "S2M_FORWARD_EVENT", input: b"S2M_FORWARD_EVENT id=1 kind=MEMBER_JOINED channel=!1@localhost nid=test@localhost owner=true", expected: Ok(Message::S2mForwardEvent(S2mForwardEventParameters { id: 1, kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), nid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
     TestCase { name: "S2M_FORWARD_EVENT_ACK", input: b"S2M_FORWARD_EVENT_ACK id=1", expected: Ok(Message::S2mForwardEventAck(S2mForwardEventAckParameters { id: 1 })) },
     TestCase { name: "S2M_FORWARD_BROADCAST_PAYLOAD", input: b"S2M_FORWARD_BROADCAST_PAYLOAD id=1 from=ortuman@localhost channel=2 length=12", expected: Ok(Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters { id: 1, from:"ortuman@localhost".into(), channel: 2, length: 12 })) },
     TestCase { name: "S2M_FORWARD_BROADCAST_PAYLOAD_ACK", input: b"S2M_FORWARD_BROADCAST_PAYLOAD_ACK id=1 valid=true altered_payload=false altered_payload_length=0", expected: Ok(Message::S2mForwardBroadcastPayloadAck(S2mForwardBroadcastPayloadAckParameters { id: 1, valid: true, altered_payload: false, altered_payload_length: 0 })) },

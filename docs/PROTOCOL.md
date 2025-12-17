@@ -252,12 +252,12 @@ Version mismatches and unsupported features result in errors:
 
 ### Identifiers
 
-#### ZID (Narwhal ID)
+#### NID (Narwhal ID)
 
-A ZID is a unique identifier for users and servers in the format `username@domain`.
+A NID is a unique identifier for users and servers in the format `username@domain`.
 
-- **Client ZID**: `username@domain` (e.g., `alice@example.com`)
-- **Server ZID**: `domain` (e.g., `example.com`) - used when username is empty
+- **Client NID**: `username@domain` (e.g., `alice@example.com`)
+- **Server NID**: `domain` (e.g., `example.com`) - used when username is empty
 
 **Validation Rules:**
 - Username must be alphanumeric with hyphens, dots, or underscores
@@ -271,7 +271,7 @@ A ChannelId identifies a communication channel in the format `!handler@domain`.
 
 - Format: `!{handler}@{domain}` (e.g., `!123@example.com`)
 - Handler is a non-zero unsigned 32-bit integer
-- Domain follows the same validation rules as ZID domains
+- Domain follows the same validation rules as NID domains
 
 ### Message Structure
 
@@ -373,16 +373,16 @@ IDENTIFY username=alice
 
 ### IDENTIFY_ACK
 
-Confirms username registration and provides the full ZID.
+Confirms username registration and provides the full NID.
 
 **Direction**: Server → Client
 
 **Parameters**:
-- `zid` (string, required): The assigned ZID (must be non-empty)
+- `nid` (string, required): The assigned NID (must be non-empty)
 
 **Example**:
 ```
-IDENTIFY_ACK zid=alice@example.com
+IDENTIFY_ACK nid=alice@example.com
 ```
 
 ---
@@ -414,14 +414,14 @@ Acknowledges an authentication attempt. If a modulator with `auth` support is co
 **Parameters**:
 - `challenge` (string, optional): Challenge string for additional authentication steps
 - `succeeded` (bool, optional): Whether authentication succeeded
-- `zid` (string, optional): The authenticated user's ZID
+- `nid` (string, optional): The authenticated user's NID
 
 **Example**:
 ```
-AUTH_ACK succeeded=true zid=alice@example.com
+AUTH_ACK succeeded=true nid=alice@example.com
 ```
 
-**Note**: When a modulator with `auth` support is configured, the `zid` is constructed from the `username` provided by the modulator in [S2M_AUTH_ACK](#s2m_auth_ack) combined with the server's domain.
+**Note**: When a modulator with `auth` support is configured, the `nid` is constructed from the `username` provided by the modulator in [S2M_AUTH_ACK](#s2m_auth_ack) combined with the server's domain.
 
 ---
 
@@ -434,7 +434,7 @@ Requests to join a channel.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, optional): Channel ID to join
-- `on_behalf` (string, optional): ZID to join on behalf of (for privileged operations)
+- `on_behalf` (string, optional): NID to join on behalf of (for privileged operations)
 
 **Example**:
 ```
@@ -469,7 +469,7 @@ Requests to leave a channel.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to leave (must be non-empty)
-- `on_behalf` (string, optional): ZID to remove from channel (for privileged operations)
+- `on_behalf` (string, optional): NID to remove from channel (for privileged operations)
 
 **Example**:
 ```
@@ -541,7 +541,7 @@ Receives a broadcast message from a channel. This message includes a payload.
 **Direction**: Server → Client
 
 **Parameters**:
-- `from` (string, required): ZID of the sender (must be non-empty)
+- `from` (string, required): NID of the sender (must be non-empty)
 - `channel` (string, required): Channel ID where the message was sent (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -561,7 +561,7 @@ Sends or receives a direct message to/from a modulator for application-specific 
 
 **Parameters**:
 - `id` (u32, optional): Request identifier for client-initiated messages
-- `from` (string, required): Sender ZID (must be non-empty)
+- `from` (string, required): Sender NID (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
 **Example (Client → Server)**:
@@ -654,7 +654,7 @@ Returns a list of channel members.
 **Parameters**:
 - `id` (u32, required): Request identifier matching the MEMBERS message (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
-- `members` (string[], required): Array of member ZIDs
+- `members` (string[], required): Array of member NIDs
 
 **Example**:
 ```
@@ -689,9 +689,9 @@ Returns or sets the access control list for a channel.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
-- `allow_join` (string[], required): Array of ZID patterns allowed to join
-- `allow_publish` (string[], required): Array of ZID patterns allowed to publish
-- `allow_read` (string[], required): Array of ZID patterns allowed to read
+- `allow_join` (string[], required): Array of NID patterns allowed to join
+- `allow_publish` (string[], required): Array of NID patterns allowed to publish
+- `allow_read` (string[], required): Array of NID patterns allowed to read
 
 **Example**:
 ```
@@ -709,9 +709,9 @@ Sets the access control list for a channel.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to modify (must be non-empty)
-- `allow_join` (string[], required): Array of ZID patterns allowed to join
-- `allow_publish` (string[], required): Array of ZID patterns allowed to publish
-- `allow_read` (string[], required): Array of ZID patterns allowed to read
+- `allow_join` (string[], required): Array of NID patterns allowed to join
+- `allow_publish` (string[], required): Array of NID patterns allowed to publish
+- `allow_read` (string[], required): Array of NID patterns allowed to read
 
 **Example**:
 ```
@@ -788,12 +788,12 @@ Notifies about a channel or system event.
 **Parameters**:
 - `kind` (string, required): Event type (must be non-empty, see [Event Kinds](#event-kinds))
 - `channel` (string, optional): Channel ID where the event occurred
-- `zid` (string, optional): ZID associated with the event
-- `owner` (bool, optional): Whether the ZID is the channel owner
+- `nid` (string, optional): NID associated with the event
+- `owner` (bool, optional): Whether the NID is the channel owner
 
 **Example**:
 ```
-EVENT kind=MEMBER_JOINED channel=!42@example.com zid=bob@example.com owner=false
+EVENT kind=MEMBER_JOINED channel=!42@example.com nid=bob@example.com owner=false
 ```
 
 ---
@@ -915,7 +915,7 @@ Returns authentication result from the modulator's application protocol. This is
 **Parameters**:
 - `id` (u32, required): Request identifier matching the S2M_AUTH message (must be non-zero)
 - `challenge` (string, optional): Challenge for additional authentication steps
-- `username` (string, optional): Authenticated username (the server combines this with its domain to form the full ZID)
+- `username` (string, optional): Authenticated username (the server combines this with its domain to form the full NID)
 - `succeeded` (bool, required): Whether authentication succeeded
 
 **Example**:
@@ -923,7 +923,7 @@ Returns authentication result from the modulator's application protocol. This is
 S2M_AUTH_ACK id=1 username=alice succeeded=true
 ```
 
-**Note**: The `username` provided here is used by the server to construct the client's ZID as `username@server-domain`.
+**Note**: The `username` provided here is used by the server to construct the client's NID as `username@server-domain`.
 
 ---
 
@@ -937,12 +937,12 @@ Forwards a channel event to the modulator for application-specific processing.
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, optional): Channel ID where the event occurred
 - `kind` (string, required): Event type (must be non-empty, see [Event Kinds](#event-kinds))
-- `zid` (string, optional): ZID associated with the event
-- `owner` (bool, optional): Whether the ZID is the channel owner
+- `nid` (string, optional): NID associated with the event
+- `owner` (bool, optional): Whether the NID is the channel owner
 
 **Example**:
 ```
-S2M_FORWARD_EVENT id=2 channel=!42@example.com kind=MEMBER_JOINED zid=bob@example.com owner=false
+S2M_FORWARD_EVENT id=2 channel=!42@example.com kind=MEMBER_JOINED nid=bob@example.com owner=false
 ```
 
 ---
@@ -971,7 +971,7 @@ Forwards a broadcast message payload to the modulator for application-specific v
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
-- `from` (string, required): Sender ZID (must be non-empty)
+- `from` (string, required): Sender NID (must be non-empty)
 - `channel` (u32, required): Channel handler number (must be non-zero)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
@@ -1016,7 +1016,7 @@ Forwards a direct message from a client to the modulator for application-specifi
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
-- `from` (string, required): Sender ZID (must be non-empty)
+- `from` (string, required): Sender NID (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
 **Example**:
@@ -1091,7 +1091,7 @@ Sends a direct message from modulator to specific clients for application-specif
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
-- `targets` (string[], required): Array of target ZIDs (must be non-empty)
+- `targets` (string[], required): Array of target NIDs (must be non-empty)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
 **Example**:
@@ -1180,8 +1180,8 @@ The following event kinds can be sent in [EVENT](#event) and [S2M_FORWARD_EVENT]
 
 Events contain contextual information that varies depending on the event kind:
 
-- **MEMBER_JOINED**: Includes `channel`, `zid` (the member who joined), and `owner` (whether they are the channel owner)
-- **MEMBER_LEFT**: Includes `channel`, `zid` (the member who left), and `owner` (whether they were the channel owner)
+- **MEMBER_JOINED**: Includes `channel`, `nid` (the member who joined), and `owner` (whether they are the channel owner)
+- **MEMBER_LEFT**: Includes `channel`, `nid` (the member who left), and `owner` (whether they were the channel owner)
 
 ## Protocol Flow Examples
 
@@ -1192,14 +1192,14 @@ Client → Server: CONNECT version=1 heartbeat_interval=30000
 Server → Client: CONNECT_ACK auth_required=true heartbeat_interval=30000 max_subscriptions=100 max_message_size=4096 max_payload_size=1048576 max_inflight_requests=10
 
 Client → Server: IDENTIFY username=alice
-Server → Client: IDENTIFY_ACK zid=alice@example.com
+Server → Client: IDENTIFY_ACK nid=alice@example.com
 
 Client → Server: AUTH token=abc123token
-Server → Client: AUTH_ACK succeeded=true zid=alice@example.com
+Server → Client: AUTH_ACK succeeded=true nid=alice@example.com
 
 Client → Server: JOIN id=1 channel=!42@example.com
 Server → Client: JOIN_ACK id=1 channel=!42@example.com
-Server → Client: EVENT kind=MEMBER_JOINED channel=!42@example.com zid=alice@example.com owner=false
+Server → Client: EVENT kind=MEMBER_JOINED channel=!42@example.com nid=alice@example.com owner=false
 ```
 
 ### Example 2: Broadcasting a Message
@@ -1229,7 +1229,7 @@ Server → Client: CONNECT_ACK auth_required=true heartbeat_interval=30000 max_s
 Client → Server: AUTH token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Server → Modulator: S2M_AUTH id=1 token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Modulator → Server: S2M_AUTH_ACK id=1 username=alice succeeded=true
-Server → Client: AUTH_ACK succeeded=true zid=alice@example.com
+Server → Client: AUTH_ACK succeeded=true nid=alice@example.com
 
 [Client can now send direct messages to the modulator]
 Client → Server: MOD_DIRECT id=1 from=alice@example.com length=20
@@ -1252,11 +1252,11 @@ Client → Server: CONNECT version=1 heartbeat_interval=30000
 Server → Client: CONNECT_ACK auth_required=true heartbeat_interval=30000 max_subscriptions=100 max_message_size=4096 max_payload_size=1048576 max_inflight_requests=10
 
 Client → Server: IDENTIFY username=alice
-Server → Client: IDENTIFY_ACK zid=alice@example.com
+Server → Client: IDENTIFY_ACK nid=alice@example.com
 
 Client → Server: AUTH token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 [Server does not validate token - no authentication occurs without modulator auth support]
-Server → Client: AUTH_ACK succeeded=true zid=alice@example.com
+Server → Client: AUTH_ACK succeeded=true nid=alice@example.com
 ```
 
 ### Example 4: Error Handling
@@ -1319,7 +1319,7 @@ The payload immediately follows the message parameters without any additional fr
 ### Authorization
 
 - Channel access is controlled through ACLs (Access Control Lists)
-- ACLs specify which ZID patterns can join, publish, and read from channels
+- ACLs specify which NID patterns can join, publish, and read from channels
 - The `on_behalf` parameter in [JOIN](#join) and [LEAVE](#leave) allows privileged users to manage other users' channel memberships
 
 ### Rate Limiting

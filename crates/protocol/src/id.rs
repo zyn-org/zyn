@@ -55,24 +55,24 @@ impl Display for ChannelIdParsingError {
 
 impl std::error::Error for ChannelIdParsingError {}
 
-/// The error type for ZID parsing.
+/// The error type for NID parsing.
 #[derive(Clone, Debug, PartialEq)]
-pub enum ZidParsingError {
-  /// The ZID has an invalid format.
-  InvalidZidFormat,
+pub enum NidParsingError {
+  /// The NID has an invalid format.
+  InvalidNidFormat,
 }
 
-// ===== impl ZidParsingError =====
+// ===== impl NidParsingError =====
 
-impl Display for ZidParsingError {
+impl Display for NidParsingError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      Self::InvalidZidFormat => write!(f, "invalid ZID format"),
+      Self::InvalidNidFormat => write!(f, "invalid NID format"),
     }
   }
 }
 
-impl std::error::Error for ZidParsingError {}
+impl std::error::Error for NidParsingError {}
 
 /// The channel ID used by the client/server to identify a channel.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -183,37 +183,37 @@ impl FromStr for ChannelId {
   }
 }
 
-/// The ZID used by the client/server to be authenticated.
+/// The NID used by the client/server to be authenticated.
 ///
-/// A ZID consists of a username and domain in the format `username@domain`.
-/// Server ZIDs have an empty username and are represented simply as `domain`.
+/// A NID consists of a username and domain in the format `username@domain`.
+/// Server NIDs have an empty username and are represented simply as `domain`.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Zid {
-  /// The username of the ZID.
+pub struct Nid {
+  /// The username of the NID.
   pub username: StringAtom,
 
-  /// The domain of the ZID.
+  /// The domain of the NID.
   pub domain: StringAtom,
 
-  /// The full representation of the ZID.
+  /// The full representation of the NID.
   full: StringAtom,
 }
 
-// ===== impl Zid =====
+// ===== impl Nid =====
 
-impl Zid {
-  /// Creates a new ZID validating the username and domain.
-  pub fn new(username: StringAtom, domain: StringAtom) -> Result<Self, ZidParsingError> {
+impl Nid {
+  /// Creates a new NID validating the username and domain.
+  pub fn new(username: StringAtom, domain: StringAtom) -> Result<Self, NidParsingError> {
     let username_ref = username.as_ref();
     let domain_ref = domain.as_ref();
 
     if !Self::validate(username_ref, domain_ref) {
-      return Err(ZidParsingError::InvalidZidFormat);
+      return Err(NidParsingError::InvalidNidFormat);
     }
     Ok(Self { username: username.clone(), domain: domain.clone(), full: Self::full_atom(username, domain) })
   }
 
-  /// Creates a new ZID without validation.
+  /// Creates a new NID without validation.
   ///
   /// # Safety
   ///
@@ -223,9 +223,9 @@ impl Zid {
     Self { username: username.clone(), domain: domain.clone(), full: Self::full_atom(username, domain) }
   }
 
-  /// Tells if the ZID is a server ZID.
+  /// Tells if the NID is a server NID.
   ///
-  /// Server ZIDs have an empty username and are represented simply as `domain`.
+  /// Server NIDs have an empty username and are represented simply as `domain`.
   pub fn is_server(&self) -> bool {
     self.username.is_empty()
   }
@@ -248,34 +248,34 @@ impl Zid {
   }
 }
 
-impl From<&Zid> for StringAtom {
-  fn from(z: &Zid) -> Self {
+impl From<&Nid> for StringAtom {
+  fn from(z: &Nid) -> Self {
     z.full.clone()
   }
 }
 
-impl From<Zid> for StringAtom {
-  fn from(z: Zid) -> Self {
+impl From<Nid> for StringAtom {
+  fn from(z: Nid) -> Self {
     z.full.clone()
   }
 }
 
-impl TryFrom<StringAtom> for Zid {
-  type Error = ZidParsingError;
+impl TryFrom<StringAtom> for Nid {
+  type Error = NidParsingError;
 
   fn try_from(a: StringAtom) -> Result<Self, Self::Error> {
-    Zid::from_str(a.as_ref())
+    Nid::from_str(a.as_ref())
   }
 }
 
-impl FromStr for Zid {
-  type Err = ZidParsingError;
+impl FromStr for Nid {
+  type Err = NidParsingError;
 
   fn from_str(full: &str) -> Result<Self, Self::Err> {
     let (username, domain) = {
       if let Some((username, domain)) = full.split_once('@') {
         if username.is_empty() {
-          return Err(ZidParsingError::InvalidZidFormat);
+          return Err(NidParsingError::InvalidNidFormat);
         }
         (username, domain)
       } else {
@@ -284,14 +284,14 @@ impl FromStr for Zid {
     };
 
     if !Self::validate(username, domain) {
-      return Err(ZidParsingError::InvalidZidFormat);
+      return Err(NidParsingError::InvalidNidFormat);
     }
 
     Ok(Self { username: StringAtom::from(username), domain: StringAtom::from(domain), full: StringAtom::from(full) })
   }
 }
 
-impl Display for Zid {
+impl Display for Nid {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     if self.is_server() { write!(f, "{}", self.domain) } else { write!(f, "{}@{}", self.username, self.domain) }
   }
@@ -344,31 +344,31 @@ mod tests {
   }
 
   #[test]
-  fn test_zid_try_from() {
+  fn test_nid_try_from() {
     use std::collections::HashMap;
 
-    let test_cases: HashMap<&str, Result<(&str, &str), ZidParsingError>> = HashMap::from([
+    let test_cases: HashMap<&str, Result<(&str, &str), NidParsingError>> = HashMap::from([
       // valid cases
       ("user@example.com", Ok(("user", "example.com"))),
       ("user@sub.example.com", Ok(("user", "sub.example.com"))),
       ("example.com", Ok(("", "example.com"))),
       // invalid cases
-      ("@example.com", Err(ZidParsingError::InvalidZidFormat)),
-      ("user@", Err(ZidParsingError::InvalidZidFormat)),
-      ("user@host@example.com", Err(ZidParsingError::InvalidZidFormat)),
-      ("", Err(ZidParsingError::InvalidZidFormat)),
-      (" user@example.com", Err(ZidParsingError::InvalidZidFormat)),
-      ("user@example.com ", Err(ZidParsingError::InvalidZidFormat)),
+      ("@example.com", Err(NidParsingError::InvalidNidFormat)),
+      ("user@", Err(NidParsingError::InvalidNidFormat)),
+      ("user@host@example.com", Err(NidParsingError::InvalidNidFormat)),
+      ("", Err(NidParsingError::InvalidNidFormat)),
+      (" user@example.com", Err(NidParsingError::InvalidNidFormat)),
+      ("user@example.com ", Err(NidParsingError::InvalidNidFormat)),
     ]);
 
     for (input, expected) in test_cases {
-      let result = Zid::from_str(input);
+      let result = Nid::from_str(input);
       match expected {
         Ok((expected_username, expected_domain)) => {
           assert!(result.is_ok(), "expected Ok for input '{}', got {:?}", input, result);
-          let zid = result.unwrap();
-          assert_eq!(zid.username.as_ref(), expected_username, "unexpected username for input '{}'", input);
-          assert_eq!(zid.domain.as_ref(), expected_domain, "unexpected domain for input '{}'", input);
+          let nid = result.unwrap();
+          assert_eq!(nid.username.as_ref(), expected_username, "unexpected username for input '{}'", input);
+          assert_eq!(nid.domain.as_ref(), expected_domain, "unexpected domain for input '{}'", input);
         },
         Err(expected_err) => {
           assert!(result.is_err(), "expected Err for input '{}', got {:?}", input, result);
@@ -379,31 +379,31 @@ mod tests {
   }
 
   #[test]
-  fn test_zid_try_from_atom() {
+  fn test_nid_try_from_atom() {
     use std::collections::HashMap;
 
-    let test_cases: HashMap<StringAtom, Result<(&str, &str), ZidParsingError>> = HashMap::from([
+    let test_cases: HashMap<StringAtom, Result<(&str, &str), NidParsingError>> = HashMap::from([
       // valid cases
       (StringAtom::from("user@example.com"), Ok(("user", "example.com"))),
       (StringAtom::from("user@sub.example.com"), Ok(("user", "sub.example.com"))),
       (StringAtom::from("example.com"), Ok(("", "example.com"))),
       // invalid cases
-      (StringAtom::from("@example.com"), Err(ZidParsingError::InvalidZidFormat)),
-      (StringAtom::from("user@"), Err(ZidParsingError::InvalidZidFormat)),
-      (StringAtom::from("user@host@example.com"), Err(ZidParsingError::InvalidZidFormat)),
-      (StringAtom::from(""), Err(ZidParsingError::InvalidZidFormat)),
-      (StringAtom::from(" user@example.com"), Err(ZidParsingError::InvalidZidFormat)),
-      (StringAtom::from("user@example.com "), Err(ZidParsingError::InvalidZidFormat)),
+      (StringAtom::from("@example.com"), Err(NidParsingError::InvalidNidFormat)),
+      (StringAtom::from("user@"), Err(NidParsingError::InvalidNidFormat)),
+      (StringAtom::from("user@host@example.com"), Err(NidParsingError::InvalidNidFormat)),
+      (StringAtom::from(""), Err(NidParsingError::InvalidNidFormat)),
+      (StringAtom::from(" user@example.com"), Err(NidParsingError::InvalidNidFormat)),
+      (StringAtom::from("user@example.com "), Err(NidParsingError::InvalidNidFormat)),
     ]);
 
     for (input, expected) in test_cases {
-      let result = Zid::try_from(input.clone());
+      let result = Nid::try_from(input.clone());
       match expected {
         Ok((expected_username, expected_domain)) => {
           assert!(result.is_ok(), "expected Ok for input '{}', got {:?}", input, result);
-          let zid = result.unwrap();
-          assert_eq!(zid.username.as_ref(), expected_username, "unexpected username for input '{}'", input);
-          assert_eq!(zid.domain.as_ref(), expected_domain, "unexpected domain for input '{}'", input);
+          let nid = result.unwrap();
+          assert_eq!(nid.username.as_ref(), expected_username, "unexpected username for input '{}'", input);
+          assert_eq!(nid.domain.as_ref(), expected_domain, "unexpected domain for input '{}'", input);
         },
         Err(expected_err) => {
           assert!(result.is_err(), "expected Err for input '{}', got {:?}", input, result);
