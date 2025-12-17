@@ -12,7 +12,7 @@
 
 ## Features
 
-- **Built for Edge Applications**: Specifically designed for mobile, desktop, and IoT client applications
+- **Designed for Edge Applications**: Built specifically for mobile, desktop, or IoT environments
 - **Real-time Pub/Sub Messaging**: Low-latency message delivery across channels with broadcast support
 - **Modular Architecture**: Extend the server with custom application logic via an external modulator
 - **Secure by Default**: TLS/SSL support with automatic certificate generation for development
@@ -27,7 +27,7 @@ https://github.com/user-attachments/assets/34baf7d3-4cfa-440d-a6e4-89cb94e922d3
 
 ### Prerequisites
 
-- Rust 1.75 or later
+- Rust 1.90 or later
 - OpenSSL
 
 ### Installation
@@ -156,7 +156,7 @@ cargo build --bin narwhal-bench --release
   --producers 1 \
   --consumers 1 \
   --duration 1m \
-  --max-payload-size 16384
+  --max-payload-size 256
 ```
 
 The benchmark tool simulates multiple producer and consumer clients connecting to a Narwhal server and exchanging messages. It reports metrics such as:
