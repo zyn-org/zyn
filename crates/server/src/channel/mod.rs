@@ -412,6 +412,12 @@ impl ChannelManager {
     };
     let mut channel_inner = channel.0.write().await;
 
+    // Re-verify channel is still in the map after acquiring lock
+    // (another thread might have removed it while we were waiting)
+    if channels.get(&channel_id.handler).is_none() {
+      return Err(narwhal_protocol::Error::new(ChannelNotFound).with_id(correlation_id).into());
+    }
+
     let left_member_nid = {
       match on_behalf_nid {
         Some(z) => {
@@ -453,6 +459,14 @@ impl ChannelManager {
     // If the channel is now empty, release it.
     if channel_inner.is_empty() {
       drop(channel_inner);
+
+      // Atomically remove only if the channel is still empty.
+      // We use try_read() to avoid blocking. If another thread is currently
+      // joining the channel (holding write lock), try_read() fails and we
+      // return false, keeping the channel.
+      channels.remove_if(&channel_id.handler, |_, channel| {
+        if let Ok(inner) = channel.0.try_read() { inner.is_empty() } else { false }
+      });
 
       return Ok(());
     }
