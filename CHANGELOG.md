@@ -5,6 +5,7 @@ All notable changes to Narwhal will be documented in this file.
 ## main / unreleased
 
 * [CHANGE]: Support alphanumeric channel identifiers. [#105](https://github.com/narwhal-io/narwhal/pull/105)
+* [ENHANCEMENT]: Reduce lock contention in channel join and configuration operations. [#108](https://github.com/narwhal-io/narwhal/pull/108)
 
 ## 0.3.0 (2025-12-12) 🎄
 
