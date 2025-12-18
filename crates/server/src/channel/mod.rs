@@ -50,49 +50,6 @@ struct ChannelManagerInner {
   max_payload_size: u32,
 }
 
-// ===== impl ChannelManagerInner =====
-
-impl ChannelManagerInner {
-  fn check_subscription_limit(&self, username: &StringAtom, correlation_id: u32) -> anyhow::Result<()> {
-    if let Some(in_channels) = self.in_channels.get(username)
-      && in_channels.len() >= self.max_channels_per_client as usize
-    {
-      return Err(
-        narwhal_protocol::Error::new(PolicyViolation)
-          .with_id(correlation_id)
-          .with_detail("subscription limit reached")
-          .into(),
-      );
-    }
-    Ok(())
-  }
-
-  fn validate_channel_configuration(&self, config: &ChannelConfig, correlation_id: u32) -> anyhow::Result<()> {
-    if config.max_clients > self.max_clients_per_channel {
-      return Err(
-        narwhal_protocol::Error::new(BadRequest)
-          .with_id(correlation_id)
-          .with_detail("max_clients exceeds server established limit")
-          .into(),
-      );
-    }
-
-    if config.max_payload_size > self.max_payload_size {
-      return Err(
-        narwhal_protocol::Error::new(BadRequest)
-          .with_id(correlation_id)
-          .with_detail("max_payload_size exceeds server established limit")
-          .into(),
-      );
-    }
-    Ok(())
-  }
-
-  fn default_channel_configuration(&self) -> ChannelConfig {
-    ChannelConfig { max_clients: self.max_clients_per_channel, max_payload_size: self.max_payload_size }
-  }
-}
-
 /// The channel manager.
 #[derive(Clone, Debug)]
 pub struct ChannelManager(Arc<RwLock<ChannelManagerInner>>);
@@ -272,10 +229,18 @@ impl ChannelManager {
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<bool> {
-    let mut mng_guard = self.0.write().await;
-
+    let mng_guard = self.0.read().await;
     let router = mng_guard.router.clone();
     let channels = mng_guard.channels.clone();
+
+    let notifier = mng_guard.notifier.clone();
+    let in_channels = mng_guard.in_channels.clone();
+
+    let max_channels_per_client = mng_guard.max_channels_per_client;
+    let max_clients_per_channel = mng_guard.max_clients_per_channel;
+    let max_payload_size = mng_guard.max_payload_size;
+
+    drop(mng_guard);
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
@@ -290,11 +255,11 @@ impl ChannelManager {
       let channel_inner = ChannelInner {
         handler: handler.clone(),
         owner: None,
-        config: mng_guard.default_channel_configuration(),
+        config: ChannelConfig { max_clients: max_clients_per_channel, max_payload_size },
         acl: ChannelAcl::default(),
         members: HashSet::new(),
         allowed_targets: Arc::default(),
-        notifier: mng_guard.notifier.clone(),
+        notifier,
       };
 
       as_owner = true;
@@ -340,7 +305,16 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(ChannelIsFull).with_id(correlation_id).into());
     }
     // Check if the maximum number of subscriptions is reached.
-    mng_guard.check_subscription_limit(&new_member_nid.username, correlation_id)?;
+    if let Some(in_channels) = in_channels.get(&new_member_nid.username)
+      && in_channels.len() >= max_channels_per_client as usize
+    {
+      return Err(
+        narwhal_protocol::Error::new(PolicyViolation)
+          .with_id(correlation_id)
+          .with_detail("subscription limit reached")
+          .into(),
+      );
+    }
 
     channel_inner.insert_member(new_member_nid.clone());
 
@@ -355,10 +329,7 @@ impl ChannelManager {
     drop(channel_inner);
 
     // Update the list of channels the connection is a member of.
-    let in_channels = &mut mng_guard.in_channels;
     in_channels.entry(new_member_nid.username.clone()).or_default().insert(channel_id.clone());
-
-    drop(mng_guard);
 
     // Send response back to the client.
     transmitter.send_message(Message::JoinChannelAck(JoinChannelAckParameters {
@@ -391,10 +362,10 @@ impl ChannelManager {
     correlation_id: u32,
   ) -> anyhow::Result<()> {
     let mng_guard = self.0.read().await;
+
     let router = mng_guard.router.clone();
     let channels = mng_guard.channels.clone();
     let in_channels = mng_guard.in_channels.clone();
-    drop(mng_guard);
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
@@ -733,17 +704,34 @@ impl ChannelManager {
     correlation_id: u32,
   ) -> anyhow::Result<()> {
     let mng_guard = self.0.read().await;
-
     let router = mng_guard.router.clone();
     let channels = mng_guard.channels.clone();
+    let max_clients_per_channel = mng_guard.max_clients_per_channel;
+    let max_payload_size = mng_guard.max_payload_size;
+    drop(mng_guard);
 
     // Ensure the channel is local.
     if channel_id.domain != router.c2s_router().local_domain() {
       return Err(narwhal_protocol::Error::new(NotAllowed).with_id(correlation_id).into());
     }
     // Validate the new channel configuration
-    mng_guard.validate_channel_configuration(&config, correlation_id)?;
-    drop(mng_guard);
+    if config.max_clients > max_clients_per_channel {
+      return Err(
+        narwhal_protocol::Error::new(BadRequest)
+          .with_id(correlation_id)
+          .with_detail("max_clients exceeds server established limit")
+          .into(),
+      );
+    }
+
+    if config.max_payload_size > max_payload_size {
+      return Err(
+        narwhal_protocol::Error::new(BadRequest)
+          .with_id(correlation_id)
+          .with_detail("max_payload_size exceeds server established limit")
+          .into(),
+      );
+    }
 
     // Check if the channel exists
     let channel = {
