@@ -7,8 +7,8 @@ use dashmap::DashMap;
 use tokio::sync::RwLock;
 
 use narwhal_protocol::ErrorReason::{
-  BadRequest, ChannelIsFull, ChannelNotFound, Forbidden, NotAllowed, NotImplemented, PolicyViolation, UserInChannel,
-  UserNotInChannel, UserNotRegistered,
+  BadRequest, ChannelIsFull, ChannelNotFound, Forbidden, NotAllowed, NotImplemented, PolicyViolation, ResourceConflict,
+  UserInChannel, UserNotInChannel, UserNotRegistered,
 };
 use narwhal_protocol::{
   BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters, JoinChannelAckParameters,
@@ -266,9 +266,22 @@ impl ChannelManager {
 
       Channel(Arc::new(RwLock::new(channel_inner)))
     });
+
     let channel = entry_ref.value().clone();
+    drop(entry_ref);
 
     let mut channel_inner = channel.0.write().await;
+
+    // Check if the channel was removed while we were waiting for the lock.
+    // This can happen if the last member left, triggering channel removal.
+    if !channels.contains_key(&handler) {
+      return Err(
+        narwhal_protocol::Error::new(ResourceConflict)
+          .with_id(correlation_id)
+          .with_detail("channel was removed during join operation")
+          .into(),
+      );
+    }
 
     // Get the NID of the new member.
     let new_member_nid = {
@@ -429,15 +442,7 @@ impl ChannelManager {
 
     // If the channel is now empty, release it.
     if channel_inner.is_empty() {
-      drop(channel_inner);
-
-      // Atomically remove only if the channel is still empty.
-      // We use try_read() to avoid blocking. If another thread is currently
-      // joining the channel (holding write lock), try_read() fails and we
-      // return false, keeping the channel.
-      channels.remove_if(&channel_id.handler, |_, channel| {
-        if let Ok(inner) = channel.0.try_read() { inner.is_empty() } else { false }
-      });
+      channels.remove(&channel_inner.handler);
 
       return Ok(());
     }

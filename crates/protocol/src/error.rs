@@ -53,6 +53,8 @@ pub enum ErrorReason {
   UsernameInUse,
   /// The user has not completed the registration process.
   UserNotRegistered,
+  /// The operation failed due to a concurrent modification conflict.
+  ResourceConflict,
 }
 
 impl From<ErrorReason> for StringAtom {
@@ -85,6 +87,7 @@ impl From<ErrorReason> for &str {
       ErrorReason::UserNotInChannel => "USER_NOT_IN_CHANNEL",
       ErrorReason::UsernameInUse => "USERNAME_IN_USE",
       ErrorReason::UserNotRegistered => "USER_NOT_REGISTERED",
+      ErrorReason::ResourceConflict => "RESOURCE_CONFLICT",
     }
   }
 }
@@ -123,6 +126,7 @@ impl FromStr for ErrorReason {
       "USER_NOT_IN_CHANNEL" => Ok(ErrorReason::UserNotInChannel),
       "USERNAME_IN_USE" => Ok(ErrorReason::UsernameInUse),
       "USER_NOT_REGISTERED" => Ok(ErrorReason::UserNotRegistered),
+      "RESOURCE_CONFLICT" => Ok(ErrorReason::ResourceConflict),
       _ => anyhow::bail!("unknown error reason: {}", s),
     }
   }
@@ -180,6 +184,7 @@ impl Error {
         | ErrorReason::UsernameInUse
         | ErrorReason::UserNotRegistered
         | ErrorReason::ServerOverloaded
+        | ErrorReason::ResourceConflict
     )
   }
 }
