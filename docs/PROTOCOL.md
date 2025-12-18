@@ -269,8 +269,9 @@ A NID is a unique identifier for users and servers in the format `username@domai
 
 A ChannelId identifies a communication channel in the format `!handler@domain`.
 
-- Format: `!{handler}@{domain}` (e.g., `!123@example.com`)
-- Handler is a non-zero unsigned 32-bit integer
+- Format: `!{handler}@{domain}` (e.g., `!abc123@example.com`)
+- Handler is a non-empty alphanumeric string (up to 256 characters)
+- Handler must contain only alphanumeric characters (a-z, A-Z, 0-9)
 - Domain follows the same validation rules as NID domains
 
 ### Message Structure
@@ -433,12 +434,12 @@ Requests to join a channel.
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
-- `channel` (string, optional): Channel ID to join
+- `channel` (string, required): Channel ID to join (must be non-empty)
 - `on_behalf` (string, optional): NID to join on behalf of (for privileged operations)
 
 **Example**:
 ```
-JOIN id=1 channel=!42@example.com
+JOIN id=1 channel=!general@example.com
 ```
 
 ---
@@ -972,12 +973,12 @@ Forwards a broadcast message payload to the modulator for application-specific v
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `from` (string, required): Sender NID (must be non-empty)
-- `channel` (u32, required): Channel handler number (must be non-zero)
+- `channel` (string, required): Channel handler (must be non-empty, alphanumeric)
 - `length` (u32, required): Payload size in bytes (must be non-zero)
 
 **Example**:
 ```
-S2M_FORWARD_BROADCAST_PAYLOAD id=3 from=alice@example.com channel=42 length=1024
+S2M_FORWARD_BROADCAST_PAYLOAD id=3 from=alice@example.com channel=abc123 length=1024
 [1024 bytes of binary payload follow]
 ```
 
@@ -1368,6 +1369,10 @@ Messages that expect responses use an `id` parameter for correlation:
 
 ## Version History
 
+- **Version 1.1** (December 2025):
+  - Changed ChannelId handler from numeric (u32) to alphanumeric string (up to 256 characters)
+  - Made `channel` parameter required in JOIN message (previously optional for dynamic channel creation)
+  - Updated S2M_FORWARD_BROADCAST_PAYLOAD `channel` parameter from u32 to alphanumeric string
 - **Version 1**: Initial protocol specification
 
 ## License

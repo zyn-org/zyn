@@ -81,7 +81,7 @@ impl TestModulator {
 
   pub fn with_forward_message_payload_handler<F, Fut>(mut self, handler: F) -> Self
   where
-    F: Fn(PoolBuffer, Nid, u32) -> Fut + Send + Sync + 'static,
+    F: Fn(PoolBuffer, Nid, StringAtom) -> Fut + Send + Sync + 'static,
     Fut: futures::Future<Output = anyhow::Result<ForwardBroadcastPayloadResult>> + Send + 'static,
   {
     self.forward_message_payload_handler = Some(Arc::new(move |request| {

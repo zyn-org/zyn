@@ -248,7 +248,7 @@ mod tests {
             },
             TestCase {
                 name: "JOIN",
-                msg: Message::JoinChannel(JoinChannelParameters { id: 1, channel: Some("!1@localhost".into()), on_behalf: Some("hamlet@domain.com".into()) }),
+                msg: Message::JoinChannel(JoinChannelParameters { id: 1, channel: "!1@localhost".into(), on_behalf: Some("hamlet@domain.com".into()) }),
                 expected_out: Some("JOIN id=1 channel=!1@localhost on_behalf=hamlet@domain.com\n".to_string()),
             },
             TestCase {
@@ -353,8 +353,8 @@ mod tests {
             },
             TestCase {
                 name: "S2M_FORWARD_BROADCAST_PAYLOAD",
-                msg: Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters { id: 1, from: "ortuman@localhost".into(), channel: 1, length: 12 }),
-                expected_out: Some("S2M_FORWARD_BROADCAST_PAYLOAD id=1 channel=1 from=ortuman@localhost length=12\n".to_string()),
+                msg: Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters { id: 1, from: "ortuman@localhost".into(), channel: "abc123".into(), length: 12 }),
+                expected_out: Some("S2M_FORWARD_BROADCAST_PAYLOAD id=1 channel=abc123 from=ortuman@localhost length=12\n".to_string()),
             },
             TestCase {
                 name: "S2M_FORWARD_BROADCAST_PAYLOAD_ACK",

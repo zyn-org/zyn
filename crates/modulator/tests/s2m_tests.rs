@@ -294,7 +294,7 @@ async fn test_s2m_forward_payload_without_alter() -> anyhow::Result<()> {
     .write_message(Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters {
       id: 1,
       from: "ortuman@localhost".into(),
-      channel: 1,
+      channel: "test1".into(),
       length: 5,
     }))
     .await?;
@@ -351,7 +351,7 @@ async fn test_s2m_forward_payload_with_alter() -> anyhow::Result<()> {
     .write_message(Message::S2mForwardBroadcastPayload(S2mForwardBroadcastPayloadParameters {
       id: 1,
       from: "ortuman@localhost".into(),
-      channel: 1,
+      channel: "test1".into(),
       length: PAYLOAD.len() as u32,
     }))
     .await?;

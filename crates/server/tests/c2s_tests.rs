@@ -241,11 +241,14 @@ async fn test_c2s_max_subscriptions_reached() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Join to a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Join to another channel and expect an error.
   suite
-    .write_message(TEST_USER_1, Message::JoinChannel(JoinChannelParameters { id: 1, channel: None, on_behalf: None }))
+    .write_message(
+      TEST_USER_1,
+      Message::JoinChannel(JoinChannelParameters { id: 1, channel: "!test2@localhost".into(), on_behalf: None }),
+    )
     .await?;
 
   // Verify that the server sent the proper error message.
@@ -296,33 +299,6 @@ async fn test_c2s_username_in_use() -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_c2s_join_new_channel() -> anyhow::Result<()> {
-  let mut suite = C2sSuite::new(default_c2s_config());
-  suite.setup().await?;
-
-  // Identify a user.
-  suite.identify(TEST_USER_1).await?;
-
-  suite
-    .write_message(
-      TEST_USER_1,
-      Message::JoinChannel(JoinChannelParameters { id: 1234, channel: None, on_behalf: None }),
-    )
-    .await?;
-
-  // Verify that the server sent the proper join channel ack message.
-  assert_message!(
-    suite.read_message(TEST_USER_1).await?,
-    Message::JoinChannelAck,
-    JoinChannelAckParameters { id: 1234, channel: StringAtom::from("!1@localhost") }
-  );
-
-  suite.teardown().await?;
-
-  Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
   let mut suite = C2sSuite::new(default_c2s_config());
   suite.setup().await?;
@@ -332,7 +308,7 @@ async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Join on behalf of another user (test_user_2@localhost).
   suite
@@ -340,7 +316,7 @@ async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::JoinChannel(JoinChannelParameters {
         id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
+        channel: "!test1@localhost".into(),
         on_behalf: Some(StringAtom::from("test_user_2@localhost")),
       }),
     )
@@ -350,7 +326,7 @@ async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::JoinChannelAck,
-    JoinChannelAckParameters { id: 2, channel: StringAtom::from("!1@localhost") }
+    JoinChannelAckParameters { id: 2, channel: StringAtom::from("!test1@localhost") }
   );
 
   // Verify that the server sent the proper event message to the joined user.
@@ -359,7 +335,7 @@ async fn test_c2s_join_on_behalf() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberJoined.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
@@ -380,17 +356,13 @@ async fn test_c2s_join_existing_channel() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Join to the existing channel.
   suite
     .write_message(
       TEST_USER_2,
-      Message::JoinChannel(JoinChannelParameters {
-        id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
-        on_behalf: None,
-      }),
+      Message::JoinChannel(JoinChannelParameters { id: 2, channel: "!test1@localhost".into(), on_behalf: None }),
     )
     .await?;
 
@@ -398,39 +370,7 @@ async fn test_c2s_join_existing_channel() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::JoinChannelAck,
-    JoinChannelAckParameters { id: 2, channel: StringAtom::from("!1@localhost") }
-  );
-
-  suite.teardown().await?;
-
-  Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_c2s_join_non_existing_channel() -> anyhow::Result<()> {
-  let mut suite = C2sSuite::new(default_c2s_config());
-  suite.setup().await?;
-
-  // Identify user.
-  suite.identify(TEST_USER_1).await?;
-
-  // Join to a non-existing channel.
-  suite
-    .write_message(
-      TEST_USER_1,
-      Message::JoinChannel(JoinChannelParameters {
-        id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
-        on_behalf: None,
-      }),
-    )
-    .await?;
-
-  // Verify that the server sent the proper error message.
-  assert_message!(
-    suite.read_message(TEST_USER_1).await?,
-    Message::Error,
-    ErrorParameters { id: Some(2), reason: narwhal_protocol::ErrorReason::ChannelNotFound.into(), detail: None }
+    JoinChannelAckParameters { id: 2, channel: StringAtom::from("!test1@localhost") }
   );
 
   suite.teardown().await?;
@@ -448,20 +388,16 @@ async fn test_c2s_join_full_channel() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Configure channel to allow only one client.
-  suite.configure_channel(TEST_USER_1, "!1@localhost", 1, 8192).await?;
+  suite.configure_channel(TEST_USER_1, "!test1@localhost", 1, 8192).await?;
 
   // Join to the existing channel.
   suite
     .write_message(
       TEST_USER_2,
-      Message::JoinChannel(JoinChannelParameters {
-        id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
-        on_behalf: None,
-      }),
+      Message::JoinChannel(JoinChannelParameters { id: 2, channel: "!test1@localhost".into(), on_behalf: None }),
     )
     .await?;
 
@@ -486,16 +422,12 @@ async fn test_c2s_join_more_than_once() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Join to the same channel twice.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   suite
     .write_message(
       TEST_USER_1,
-      Message::JoinChannel(JoinChannelParameters {
-        id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
-        on_behalf: None,
-      }),
+      Message::JoinChannel(JoinChannelParameters { id: 2, channel: "!test1@localhost".into(), on_behalf: None }),
     )
     .await?;
 
@@ -520,7 +452,7 @@ async fn test_c2s_leave() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Join to a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Leave from the channel.
   suite
@@ -528,7 +460,7 @@ async fn test_c2s_leave() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::LeaveChannel(LeaveChannelParameters {
         id: 2,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         on_behalf: None,
       }),
     )
@@ -556,8 +488,8 @@ async fn test_c2s_leave_on_behalf() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join users to the same channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_2, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!test1@localhost", None).await?;
 
   // Ignore new member EVENT message...
   suite.ignore_reply(TEST_USER_1).await?;
@@ -568,7 +500,7 @@ async fn test_c2s_leave_on_behalf() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::LeaveChannel(LeaveChannelParameters {
         id: 1,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         on_behalf: Some(StringAtom::from("test_user_2@localhost")),
       }),
     )
@@ -587,7 +519,7 @@ async fn test_c2s_leave_on_behalf() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberLeft.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(false),
     }
@@ -608,14 +540,14 @@ async fn test_c2s_leave_as_owner() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join users to the same channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_2@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_2@localhost")).await?;
 
   // Ignore new member EVENT message...
   suite.ignore_reply(TEST_USER_2).await?;
 
   // Leave from the channel as owner.
-  suite.leave_channel(TEST_USER_1, "!1@localhost").await?;
+  suite.leave_channel(TEST_USER_1, "!test1@localhost").await?;
 
   // Verify that the server sent the proper event messages.
   assert_message!(
@@ -623,7 +555,7 @@ async fn test_c2s_leave_as_owner() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberLeft.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_1@localhost")),
       owner: Some(true)
     }
@@ -634,7 +566,7 @@ async fn test_c2s_leave_as_owner() -> anyhow::Result<()> {
     Message::Event,
     EventParameters {
       kind: MemberJoined.into(),
-      channel: Some(StringAtom::from("!1@localhost")),
+      channel: Some(StringAtom::from("!test1@localhost")),
       nid: Some(StringAtom::from("test_user_2@localhost")),
       owner: Some(true)
     }
@@ -655,7 +587,7 @@ async fn test_c2s_non_member_leave() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join to a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Leave from the channel.
   suite
@@ -663,7 +595,7 @@ async fn test_c2s_non_member_leave() -> anyhow::Result<()> {
       TEST_USER_2,
       Message::LeaveChannel(LeaveChannelParameters {
         id: 1,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         on_behalf: None,
       }),
     )
@@ -692,9 +624,9 @@ async fn test_c2s_list_members() -> anyhow::Result<()> {
   suite.identify(TEST_USER_3).await?;
 
   // Join users to a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_2, Some("!1@localhost"), None).await?;
-  suite.join_channel(TEST_USER_3, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_3, "!test1@localhost", None).await?;
 
   // Ignore new member EVENT messages...
   suite.ignore_reply(TEST_USER_1).await?;
@@ -704,7 +636,7 @@ async fn test_c2s_list_members() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListMembers(ListMembersParameters { id: 1, channel: StringAtom::from("!1@localhost") }),
+      Message::ListMembers(ListMembersParameters { id: 1, channel: StringAtom::from("!test1@localhost") }),
     )
     .await?;
 
@@ -714,7 +646,7 @@ async fn test_c2s_list_members() -> anyhow::Result<()> {
     Message::ListMembersAck,
     ListMembersAckParameters {
       id: 1,
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       members: Vec::from(
         [
           StringAtom::from("test_user_1@localhost"),
@@ -741,9 +673,9 @@ async fn test_c2s_list_channels() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join user to several channels.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_2, None, None).await?;
-  suite.join_channel(TEST_USER_1, Some("!2@localhost"), None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!test2@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!test2@localhost", None).await?;
 
   // List all channels a user is in.
   suite.write_message(TEST_USER_1, Message::ListChannels(ListChannelsParameters { id: 1, owner: false })).await?;
@@ -754,7 +686,7 @@ async fn test_c2s_list_channels() -> anyhow::Result<()> {
     Message::ListChannelsAck,
     ListChannelsAckParameters {
       id: 1,
-      channels: Vec::from([StringAtom::from("!1@localhost"), StringAtom::from("!2@localhost")].as_slice()),
+      channels: Vec::from([StringAtom::from("!test1@localhost"), StringAtom::from("!test2@localhost")].as_slice()),
     }
   );
 
@@ -773,9 +705,9 @@ async fn test_c2s_list_channels_as_owner() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join user to several channels.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_2, None, None).await?;
-  suite.join_channel(TEST_USER_1, Some("!2@localhost"), None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!test2@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!test2@localhost", None).await?;
 
   // List all channels a user is in (as owner).
   suite.write_message(TEST_USER_1, Message::ListChannels(ListChannelsParameters { id: 1, owner: true })).await?;
@@ -784,7 +716,7 @@ async fn test_c2s_list_channels_as_owner() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::ListChannelsAck,
-    ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!1@localhost")].as_slice()) }
+    ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!test1@localhost")].as_slice()) }
   );
 
   suite.teardown().await?;
@@ -806,7 +738,7 @@ async fn test_c2s_leave_from_non_existing_channel() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::LeaveChannel(LeaveChannelParameters {
         id: 2,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         on_behalf: None,
       }),
     )
@@ -833,7 +765,7 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set the channel configuration.
   suite
@@ -841,7 +773,7 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::SetChannelConfiguration(SetChannelConfigurationParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         max_clients: 25,
         max_payload_size: 8192,
       }),
@@ -854,7 +786,7 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
     Message::ChannelConfiguration,
     ChannelConfigurationParameters {
       id: 1234,
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       max_clients: 25,
       max_payload_size: 8192
     }
@@ -866,7 +798,7 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::GetChannelConfiguration(GetChannelConfigurationParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
       }),
     )
     .await?;
@@ -877,7 +809,7 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
     Message::ChannelConfiguration,
     ChannelConfigurationParameters {
       id: 1234,
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       max_clients: 25,
       max_payload_size: 8192
     }
@@ -898,7 +830,7 @@ async fn test_c2s_unauthorized_channel_configuration() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set the channel configuration as an unauthorized user.
   suite
@@ -906,7 +838,7 @@ async fn test_c2s_unauthorized_channel_configuration() -> anyhow::Result<()> {
       TEST_USER_2,
       Message::SetChannelConfiguration(SetChannelConfigurationParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         max_clients: 25,
         max_payload_size: 8192,
       }),
@@ -934,7 +866,7 @@ async fn test_c2s_channel_max_clients_configuration_limit() -> anyhow::Result<()
   suite.identify(TEST_USER_1).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set the channel configuration.
   suite
@@ -942,7 +874,7 @@ async fn test_c2s_channel_max_clients_configuration_limit() -> anyhow::Result<()
       TEST_USER_1,
       Message::SetChannelConfiguration(SetChannelConfigurationParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         max_clients: 200,
         max_payload_size: 8192,
       }),
@@ -974,7 +906,7 @@ async fn test_c2s_channel_max_payload_configuration_limit() -> anyhow::Result<()
   suite.identify(TEST_USER_1).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set the channel configuration.
   suite
@@ -982,7 +914,7 @@ async fn test_c2s_channel_max_payload_configuration_limit() -> anyhow::Result<()
       TEST_USER_1,
       Message::SetChannelConfiguration(SetChannelConfigurationParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         max_clients: 25,
         max_payload_size: 1_000 * 1024,
       }),
@@ -1015,8 +947,8 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Join users to a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_2, Some("!1@localhost"), None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!test1@localhost", None).await?;
 
   // Ignore new member EVENT message...
   suite.ignore_reply(TEST_USER_1).await?;
@@ -1024,7 +956,7 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
   // Set the channel ACL
   let set_channel_acl_params = SetChannelAclParameters {
     id: 1234,
-    channel: StringAtom::from("!1@localhost"),
+    channel: StringAtom::from("!test1@localhost"),
     allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
     allow_publish: Vec::default(),
     allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
@@ -1043,7 +975,7 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
     Message::ChannelAcl,
     ChannelAclParameters {
       id: 1234,
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
       allow_publish: Vec::default(),
       allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
@@ -1062,7 +994,7 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::GetChannelAcl(GetChannelAclParameters { id: 1234, channel: StringAtom::from("!1@localhost") }),
+      Message::GetChannelAcl(GetChannelAclParameters { id: 1234, channel: StringAtom::from("!test1@localhost") }),
     )
     .await?;
 
@@ -1071,7 +1003,7 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
     Message::ChannelAcl,
     ChannelAclParameters {
       id: 1234,
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
       allow_publish: Vec::default(),
       allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
@@ -1092,10 +1024,10 @@ async fn test_c2s_channel_acl_max_entries() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set channels max clients to 2.
-  suite.configure_channel(TEST_USER_1, "!1@localhost", 2, 8192).await?;
+  suite.configure_channel(TEST_USER_1, "!test1@localhost", 2, 8192).await?;
 
   // Set the channel ACL (exceeding the maximum number of entries).
   suite
@@ -1103,7 +1035,7 @@ async fn test_c2s_channel_acl_max_entries() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::SetChannelAcl(SetChannelAclParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         allow_join: Vec::from(
           [
             StringAtom::from("test_user_1@localhost"),
@@ -1144,13 +1076,13 @@ async fn test_c2s_channel_acl_join_deny() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Set the channel ACL.
   suite
     .set_channel_acl(
       TEST_USER_1,
-      "!1@localhost",
+      "!test1@localhost",
       Vec::from([StringAtom::from("test_user_99@localhost")].as_slice()),
       Vec::default(),
       Vec::default(),
@@ -1161,11 +1093,7 @@ async fn test_c2s_channel_acl_join_deny() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_2,
-      Message::JoinChannel(JoinChannelParameters {
-        id: 2,
-        channel: Some(StringAtom::from("!1@localhost")),
-        on_behalf: None,
-      }),
+      Message::JoinChannel(JoinChannelParameters { id: 2, channel: "!test1@localhost".into(), on_behalf: None }),
     )
     .await?;
 
@@ -1194,20 +1122,20 @@ async fn test_c2s_broadcast() -> anyhow::Result<()> {
   suite.identify(TEST_USER_3).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_2@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_2@localhost")).await?;
 
   // Ignore new member EVENT message.
   suite.ignore_reply(TEST_USER_2).await?;
 
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_3@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_3@localhost")).await?;
 
   // Ignore new member EVENT messages...
   suite.ignore_reply(TEST_USER_2).await?;
   suite.ignore_reply(TEST_USER_3).await?;
 
   // Broadcast a message to the channel...
-  suite.broadcast(TEST_USER_1, "!1@localhost", "Hello world!").await?;
+  suite.broadcast(TEST_USER_1, "!test1@localhost", "Hello world!").await?;
 
   // Verify that the server sent the proper message to the other users.
   assert_message!(
@@ -1215,7 +1143,7 @@ async fn test_c2s_broadcast() -> anyhow::Result<()> {
     Message::Message,
     MessageParameters {
       from: StringAtom::from("test_user_1@localhost"),
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       length: CONTENT_LENGTH
     }
   );
@@ -1228,7 +1156,7 @@ async fn test_c2s_broadcast() -> anyhow::Result<()> {
     Message::Message,
     MessageParameters {
       from: StringAtom::from("test_user_1@localhost"),
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       length: CONTENT_LENGTH
     }
   );
@@ -1250,7 +1178,7 @@ async fn test_c2s_broadcast_invalid_payload() -> anyhow::Result<()> {
   suite.identify(TEST_USER_1).await?;
 
   // Create a channel.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
   // Broadcast a message to the channel...
   suite
@@ -1258,7 +1186,7 @@ async fn test_c2s_broadcast_invalid_payload() -> anyhow::Result<()> {
       TEST_USER_1,
       Message::Broadcast(BroadcastParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         qos: None,
         length: 1,
       }),
@@ -1294,9 +1222,9 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
   suite.identify(TEST_USER_2).await?;
 
   // Create a channel and join users to it.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_2@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_2@localhost")).await?;
 
   // Ignore new member EVENT message.
   suite.ignore_reply(TEST_USER_2).await?;
@@ -1305,7 +1233,7 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
   suite
     .set_channel_acl(
       TEST_USER_1,
-      "!1@localhost",
+      "!test1@localhost",
       Vec::default(),
       Vec::from([StringAtom::from("test_user_99@localhost")].as_slice()),
       Vec::default(),
@@ -1318,7 +1246,7 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
       TEST_USER_2,
       Message::Broadcast(BroadcastParameters {
         id: 1234,
-        channel: StringAtom::from("!1@localhost"),
+        channel: StringAtom::from("!test1@localhost"),
         qos: None,
         length: 1,
       }),
@@ -1351,14 +1279,14 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
   suite.identify(TEST_USER_3).await?;
 
   // Create a channel and join users to it.
-  suite.join_channel(TEST_USER_1, None, None).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_2@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_2@localhost")).await?;
 
   // Ignore new member EVENT message.
   suite.ignore_reply(TEST_USER_2).await?;
 
-  suite.join_channel(TEST_USER_1, Some("!1@localhost"), Some("test_user_3@localhost")).await?;
+  suite.join_channel(TEST_USER_1, "!test1@localhost", Some("test_user_3@localhost")).await?;
 
   // Ignore new member EVENT messages.
   suite.ignore_reply(TEST_USER_2).await?;
@@ -1368,7 +1296,7 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
   suite
     .set_channel_acl(
       TEST_USER_1,
-      "!1@localhost",
+      "!test1@localhost",
       Vec::default(),
       Vec::default(),
       Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
@@ -1376,7 +1304,7 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
     .await?;
 
   // Broadcast a message to the channel...
-  suite.broadcast(TEST_USER_1, "!1@localhost", "Hello world!").await?;
+  suite.broadcast(TEST_USER_1, "!test1@localhost", "Hello world!").await?;
 
   // Verify that the server sent the proper message to the other users.
   assert_message!(
@@ -1384,7 +1312,7 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
     Message::Message,
     MessageParameters {
       from: StringAtom::from("test_user_1@localhost"),
-      channel: StringAtom::from("!1@localhost"),
+      channel: StringAtom::from("!test1@localhost"),
       length: 12
     }
   );
