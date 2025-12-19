@@ -733,7 +733,12 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   // Second connection should still be able to list channels
   // and see that the user is still a member of the channel
   conn2
-    .write_message(Message::ListChannels(narwhal_protocol::ListChannelsParameters { id: 5678, owner: false }))
+    .write_message(Message::ListChannels(narwhal_protocol::ListChannelsParameters {
+      id: 5678,
+      count: None,
+      page: None,
+      owner: false,
+    }))
     .await?;
 
   let list_response = conn2.read_message().await?;

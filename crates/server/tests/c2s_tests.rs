@@ -678,7 +678,12 @@ async fn test_c2s_list_channels() -> anyhow::Result<()> {
   suite.join_channel(TEST_USER_1, "!test2@localhost", None).await?;
 
   // List all channels a user is in.
-  suite.write_message(TEST_USER_1, Message::ListChannels(ListChannelsParameters { id: 1, owner: false })).await?;
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 1, count: None, page: None, owner: false }),
+    )
+    .await?;
 
   // Verify that the server sent the proper list members ack message.
   assert_message!(
@@ -710,13 +715,108 @@ async fn test_c2s_list_channels_as_owner() -> anyhow::Result<()> {
   suite.join_channel(TEST_USER_1, "!test2@localhost", None).await?;
 
   // List all channels a user is in (as owner).
-  suite.write_message(TEST_USER_1, Message::ListChannels(ListChannelsParameters { id: 1, owner: true })).await?;
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 1, count: None, page: None, owner: true }),
+    )
+    .await?;
 
   // Verify that the server sent the proper list members ack message.
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::ListChannelsAck,
     ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!test1@localhost")].as_slice()) }
+  );
+
+  suite.teardown().await?;
+
+  Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
+  let mut suite = C2sSuite::new(default_c2s_config());
+  suite.setup().await?;
+
+  // Identify user.
+  suite.identify(TEST_USER_1).await?;
+
+  // Join user to multiple channels (create 5 channels).
+  suite.join_channel(TEST_USER_1, "!channel1@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!channel2@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!channel3@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!channel4@localhost", None).await?;
+  suite.join_channel(TEST_USER_1, "!channel5@localhost", None).await?;
+
+  // Request page 1 with count of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 1, count: Some(2), page: Some(1), owner: false }),
+    )
+    .await?;
+
+  // Verify page 1 contains first 2 channels.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListChannelsAck,
+    ListChannelsAckParameters {
+      id: 1,
+      channels: Vec::from(
+        [StringAtom::from("!channel1@localhost"), StringAtom::from("!channel2@localhost")].as_slice()
+      ),
+    }
+  );
+
+  // Request page 2 with count of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 2, count: Some(2), page: Some(2), owner: false }),
+    )
+    .await?;
+
+  // Verify page 2 contains next 2 channels.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListChannelsAck,
+    ListChannelsAckParameters {
+      id: 2,
+      channels: Vec::from(
+        [StringAtom::from("!channel3@localhost"), StringAtom::from("!channel4@localhost")].as_slice()
+      ),
+    }
+  );
+
+  // Request page 3 with count of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 3, count: Some(2), page: Some(3), owner: false }),
+    )
+    .await?;
+
+  // Verify page 3 contains last channel.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListChannelsAck,
+    ListChannelsAckParameters { id: 3, channels: Vec::from([StringAtom::from("!channel5@localhost")].as_slice()) }
+  );
+
+  // Request page 4 with count of 2 (beyond available data).
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListChannels(ListChannelsParameters { id: 4, count: Some(2), page: Some(4), owner: false }),
+    )
+    .await?;
+
+  // Verify page 4 is empty.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListChannelsAck,
+    ListChannelsAckParameters { id: 4, channels: Vec::new() }
   );
 
   suite.teardown().await?;

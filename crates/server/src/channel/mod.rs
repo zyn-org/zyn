@@ -109,6 +109,8 @@ impl ChannelManager {
   pub async fn list_channels(
     &self,
     nid: Nid,
+    page: Option<u32>,
+    count: Option<u32>,
     as_owner: bool,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
@@ -140,9 +142,21 @@ impl ChannelManager {
 
     channel_list.sort();
 
+    // Apply pagination if specified
+    let page = page.unwrap_or(1).max(1);
+    let count = count.unwrap_or(20);
+
+    let start = ((page - 1) * count) as usize;
+    let end = (page * count) as usize;
+
+    let paginated_channels =
+      if start < channel_list.len() { channel_list[start..end.min(channel_list.len())].to_vec() } else { Vec::new() };
+
     // Send response back to the client.
-    transmitter
-      .send_message(Message::ListChannelsAck(ListChannelsAckParameters { id: correlation_id, channels: channel_list }));
+    transmitter.send_message(Message::ListChannelsAck(ListChannelsAckParameters {
+      id: correlation_id,
+      channels: paginated_channels,
+    }));
 
     Ok(())
   }

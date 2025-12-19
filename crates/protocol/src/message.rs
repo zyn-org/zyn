@@ -250,6 +250,10 @@ pub struct ListChannelsParameters {
   #[param(validate = "non_zero")]
   pub id: u32,
 
+  pub count: Option<u32>,
+
+  pub page: Option<u32>,
+
   pub owner: bool,
 }
 

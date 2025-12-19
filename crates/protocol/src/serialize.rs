@@ -268,8 +268,8 @@ mod tests {
             },
             TestCase {
                 name: "CHANNELS",
-                msg: Message::ListChannels(ListChannelsParameters { id: 1, owner: true }),
-                expected_out: Some("CHANNELS id=1 owner=true\n".to_string()),
+                msg: Message::ListChannels(ListChannelsParameters { id: 1, count: Some(10), page: Some(1), owner: true }),
+                expected_out: Some("CHANNELS id=1 count=10 owner=true page=1\n".to_string()),
             },
             TestCase {
                 name: "CHANNELS_ACK",
