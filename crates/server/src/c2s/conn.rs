@@ -876,16 +876,20 @@ impl C2sDispatcherInner {
 
     let mut correlation_id: u32 = 0;
     let mut as_owner: bool = false;
+    let mut page: Option<u32> = None;
+    let mut count: Option<u32> = None;
 
     if let Message::ListChannels(params) = msg {
       correlation_id = params.id;
+      page = params.page;
+      count = params.count;
       as_owner = params.owner;
     }
     let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
     // Submit the request to list the channels.
-    self.channel_manager.list_channels(nid.clone(), as_owner, transmitter, correlation_id).await?;
+    self.channel_manager.list_channels(nid.clone(), page, count, as_owner, transmitter, correlation_id).await?;
 
     trace!(handler = self.transmitter.handler, nid = nid.to_string(), as_owner = as_owner, "listed channels");
 

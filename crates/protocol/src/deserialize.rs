@@ -350,8 +350,8 @@ mod tests {
         },
     TestCase {
             name: "CHANNELS",
-            input: b"CHANNELS id=1 owner=true",
-            expected: Ok(Message::ListChannels(ListChannelsParameters { id: 1, owner: true })),
+            input: b"CHANNELS id=1 count=10 page=1 owner=true",
+            expected: Ok(Message::ListChannels(ListChannelsParameters { id: 1, count: Some(10), page: Some(1), owner: true })),
         },
     TestCase {
             name: "CHANNELS_ACK",
