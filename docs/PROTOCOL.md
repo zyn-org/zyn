@@ -603,11 +603,13 @@ Requests a list of channels.
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
+- `page` (u32, optional): Page number for pagination (1-based, defaults to 1)
+- `count` (u32, optional): Number of channels per page (defaults to 20)
 - `owner` (bool, required): If true, list only channels owned by the requester
 
 **Example**:
 ```
-CHANNELS id=5 owner=false
+CHANNELS id=5 page=1 count=10 owner=false
 ```
 
 ---
@@ -620,12 +622,17 @@ Returns a list of channels.
 
 **Parameters**:
 - `id` (u32, required): Request identifier matching the CHANNELS message (must be non-zero)
-- `channels` (string[], required): Array of channel IDs
+- `channels` (string[], required): Array of channel IDs for the requested page
 
 **Example**:
 ```
 CHANNELS_ACK id=5 channels:3=!42@example.com !43@example.com !44@example.com
 ```
+
+**Notes**:
+- When pagination is used, only the channels for the requested page are returned
+- Page numbering is 1-based (page 1 is the first page)
+- If the requested page exceeds available data, an empty array is returned
 
 ---
 
