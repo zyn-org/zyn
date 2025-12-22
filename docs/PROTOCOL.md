@@ -604,12 +604,12 @@ Requests a list of channels.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `page` (u32, optional): Page number for pagination (1-based, defaults to 1)
-- `count` (u32, optional): Number of channels per page (defaults to 20)
+- `page_size` (u32, optional): Number of channels per page (defaults to 20, max 100)
 - `owner` (bool, required): If true, list only channels owned by the requester
 
 **Example**:
 ```
-CHANNELS id=5 page=1 count=10 owner=false
+CHANNELS id=5 page=1 page_size=10 owner=false
 ```
 
 ---
@@ -623,16 +623,20 @@ Returns a list of channels.
 **Parameters**:
 - `id` (u32, required): Request identifier matching the CHANNELS message (must be non-zero)
 - `channels` (string[], required): Array of channel IDs for the requested page
+- `page` (u32, optional): Current page number (included when results are paginated)
+- `page_size` (u32, optional): Number of items per page (included when results are paginated)
+- `total_count` (u32, optional): Total number of channels available (included when results are paginated)
 
 **Example**:
 ```
-CHANNELS_ACK id=5 channels:3=!42@example.com !43@example.com !44@example.com
+CHANNELS_ACK id=5 channels:3=!42@example.com !43@example.com !44@example.com page=1 page_size=10 total_count=25
 ```
 
 **Notes**:
-- When pagination is used, only the channels for the requested page are returned
+- Pagination metadata (`page`, `page_size`, `total_count`) is included only when the result set is paginated (i.e., when there are more results than fit in a single page)
 - Page numbering is 1-based (page 1 is the first page)
-- If the requested page exceeds available data, an empty array is returned
+- If the requested page exceeds available data, an empty array is returned with pagination metadata
+- Maximum page size is capped at 100 items
 
 ---
 
@@ -645,10 +649,12 @@ Requests a list of members in a channel.
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
+- `page` (u32, optional): Page number for pagination (1-based, defaults to 1)
+- `page_size` (u32, optional): Number of members per page (defaults to 20, max 100)
 
 **Example**:
 ```
-MEMBERS id=6 channel=!42@example.com
+MEMBERS id=6 channel=!42@example.com page=1 page_size=10
 ```
 
 ---
@@ -662,12 +668,21 @@ Returns a list of channel members.
 **Parameters**:
 - `id` (u32, required): Request identifier matching the MEMBERS message (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
-- `members` (string[], required): Array of member NIDs
+- `members` (string[], required): Array of member NIDs for the requested page
+- `page` (u32, optional): Current page number (included when results are paginated)
+- `page_size` (u32, optional): Number of items per page (included when results are paginated)
+- `total_count` (u32, optional): Total number of members in the channel (included when results are paginated)
 
 **Example**:
 ```
-MEMBERS_ACK id=6 channel=!42@example.com members:2=alice@example.com bob@example.com
+MEMBERS_ACK id=6 channel=!42@example.com members:2=alice@example.com bob@example.com page=1 page_size=10 total_count=15
 ```
+
+**Notes**:
+- Pagination metadata (`page`, `page_size`, `total_count`) is included only when the result set is paginated (i.e., when there are more results than fit in a single page)
+- Page numbering is 1-based (page 1 is the first page)
+- If the requested page exceeds available data, an empty array is returned with pagination metadata
+- Maximum page size is capped at 100 items
 
 ---
 
