@@ -278,12 +278,12 @@ mod tests {
             },
             TestCase {
                 name: "MEMBERS",
-                msg: Message::ListMembers(ListMembersParameters { id: 1, channel: "!1@localhost".into() }),
+                msg: Message::ListMembers(ListMembersParameters { id: 1, channel: "!1@localhost".into(), page: None, page_size: None }),
                 expected_out: Some("MEMBERS id=1 channel=!1@localhost\n".to_string()),
             },
             TestCase {
                 name: "MEMBERS_ACK",
-                msg: Message::ListMembersAck(ListMembersAckParameters { id: 1, channel: "!1@localhost".into(), members: Vec::from(["test_user@localhost".into()].as_slice()) }),
+                msg: Message::ListMembersAck(ListMembersAckParameters { id: 1, channel: "!1@localhost".into(), members: Vec::from(["test_user@localhost".into()].as_slice()), page: None, page_size: None, total_count: None }),
                 expected_out: Some("MEMBERS_ACK id=1 channel=!1@localhost members:1=test_user@localhost\n".to_string()),
             },
             TestCase {

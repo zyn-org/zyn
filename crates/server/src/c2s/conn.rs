@@ -916,10 +916,14 @@ impl C2sDispatcherInner {
 
     let mut correlation_id: u32 = 0;
     let mut channel_id: Option<ChannelId> = None;
+    let mut page: Option<u32> = None;
+    let mut count: Option<u32> = None;
 
     if let Message::ListMembers(params) = msg {
       correlation_id = params.id;
       channel_id = Some(Self::parse_channel_id(&params.channel)?);
+      page = params.page;
+      count = params.page_size;
     }
     let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
@@ -927,7 +931,10 @@ impl C2sDispatcherInner {
     let channel_id = channel_id.unwrap();
 
     // Submit the request to list the members.
-    self.channel_manager.list_members(channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
+    self
+      .channel_manager
+      .list_members(channel_id.clone(), nid.clone(), page, count, transmitter, correlation_id)
+      .await?;
 
     trace!(
       handler = self.transmitter.handler,
