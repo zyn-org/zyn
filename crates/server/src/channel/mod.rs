@@ -11,8 +11,9 @@ use narwhal_protocol::ErrorReason::{
   UserInChannel, UserNotInChannel, UserNotRegistered,
 };
 use narwhal_protocol::{
-  BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters, JoinChannelAckParameters,
-  LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message, MessageParameters, QoS,
+  AclAction, AclType, BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters,
+  JoinChannelAckParameters, LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message,
+  MessageParameters, QoS,
 };
 use narwhal_protocol::{ChannelId, Nid};
 use narwhal_protocol::{Event, EventKind};
@@ -25,7 +26,7 @@ use crate::transmitter::{Resource, Transmitter};
 
 const DASH_MAP_SHARD_COUNT: usize = 1024;
 
-const MAX_CHANNELS_PAGE_SIZE: u32 = 100;
+const MAX_CHANNELS_PAGE_SIZE: u32 = 50;
 
 const MAX_MEMBERS_PAGE_SIZE: u32 = 100;
 
@@ -541,6 +542,7 @@ impl ChannelManager {
   ///
   /// * `channel_id` - The channel identifier
   /// * `nid` - The user identifier requesting the ACL
+  /// * `acl_type` - The type of ACL to retrieve (Join, Publish, or Read)
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
@@ -551,6 +553,7 @@ impl ChannelManager {
     &self,
     channel_id: ChannelId,
     nid: Nid,
+    acl_type: AclType,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -582,11 +585,11 @@ impl ChannelManager {
     }
 
     // Obtain the channel's ACL.
-    let acl = &channel_inner.acl;
-
-    let allow_join: Vec<StringAtom> = acl.join_acl.allow_list().iter().map(|z| z.into()).collect();
-    let allow_publish: Vec<StringAtom> = acl.publish_acl.allow_list().iter().map(|z| z.into()).collect();
-    let allow_read: Vec<StringAtom> = acl.read_acl.allow_list().iter().map(|z| z.into()).collect();
+    let acl = match acl_type {
+      AclType::Join => channel_inner.acl.join_acl.clone(),
+      AclType::Publish => channel_inner.acl.publish_acl.clone(),
+      AclType::Read => channel_inner.acl.read_acl.clone(),
+    };
 
     drop(channel_inner);
 
@@ -594,9 +597,8 @@ impl ChannelManager {
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
       id: correlation_id,
       channel: channel_id.into(),
-      allow_publish,
-      allow_join,
-      allow_read,
+      r#type: acl_type.as_str().into(),
+      nids: acl.allow_list().into_iter().map(|z| z.into()).collect(),
     }));
 
     Ok(())
@@ -606,20 +608,25 @@ impl ChannelManager {
   ///
   /// # Arguments
   ///
-  /// * `acl` - The new ACL configuration
   /// * `channel_id` - The channel identifier
   /// * `nid` - The user identifier setting the ACL
+  /// * `nids` - The list of NIDs to add or remove
+  /// * `acl_type` - The type of ACL being set
+  /// * `acl_action` - The action being performed on the ACL
   /// * `transmitter` - The connection transmitter for sending the response
   /// * `correlation_id` - The correlation ID for the request
   ///
   /// # Returns
   ///
   /// A result indicating success or failure
+  #[allow(clippy::too_many_arguments)]
   pub async fn set_channel_acl(
     &mut self,
-    acl: ChannelAcl,
     channel_id: ChannelId,
     nid: Nid,
+    nids: Vec<Nid>,
+    acl_type: AclType,
+    acl_action: AclAction,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -650,18 +657,19 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
 
-    // Validate the new ACL.
-    let channel_max_clients = channel_inner.config.max_clients as usize;
-
-    let is_valid_acl = {
-      let is_valid_join_list = acl.join_acl.allow_list().len() <= channel_max_clients;
-      let is_valid_publish_list = acl.publish_acl.allow_list().len() <= channel_max_clients;
-      let is_valid_read_list = acl.read_acl.allow_list().len() <= channel_max_clients;
-
-      is_valid_join_list && is_valid_publish_list && is_valid_read_list
+    // Update the ACL
+    let mut new_acl = match acl_type {
+      AclType::Join => channel_inner.acl.join_acl.clone(),
+      AclType::Publish => channel_inner.acl.publish_acl.clone(),
+      AclType::Read => channel_inner.acl.read_acl.clone(),
     };
 
-    if !is_valid_acl {
+    new_acl.update(nids, acl_action);
+
+    // Validate the updated ACL
+    let channel_max_clients = channel_inner.config.max_clients as usize;
+
+    if new_acl.total_entries() > channel_max_clients {
       return Err(
         narwhal_protocol::Error::new(PolicyViolation)
           .with_id(correlation_id)
@@ -670,17 +678,18 @@ impl ChannelManager {
       );
     }
 
-    // Update the channel ACL.
-    channel_inner.set_acl(acl.clone());
+    // Set the updated ACL
+    let acl_nids = new_acl.allow_list().into_iter().map(|z| z.into()).collect();
+
+    channel_inner.set_acl(new_acl, acl_type);
     drop(channel_inner);
 
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
       id: correlation_id,
       channel: channel_id.into(),
-      allow_join: acl.join_acl.allow_list().iter().map(|z| z.into()).collect(),
-      allow_publish: acl.publish_acl.allow_list().iter().map(|z| z.into()).collect(),
-      allow_read: acl.read_acl.allow_list().iter().map(|z| z.into()).collect(),
+      r#type: acl_type.as_str().into(),
+      nids: acl_nids,
     }));
 
     Ok(())
@@ -1002,8 +1011,12 @@ impl ChannelInner {
   }
 
   /// Sets the ACL for the channel.
-  fn set_acl(&mut self, acl: ChannelAcl) {
-    self.acl = acl;
+  fn set_acl(&mut self, acl: Acl, acl_type: AclType) {
+    match acl_type {
+      AclType::Join => self.acl.join_acl = acl,
+      AclType::Publish => self.acl.publish_acl = acl,
+      AclType::Read => self.acl.read_acl = acl,
+    }
     self.update_allowed_targets();
   }
 
@@ -1066,23 +1079,40 @@ struct Acl {
 // ===== impl Acl =====
 
 impl Acl {
-  /// Creates a new ACL.
-  fn new(allow_list: Vec<Nid>) -> Acl {
-    let mut allow_lists: HashMap<StringAtom, HashSet<StringAtom>> = HashMap::new();
+  /// Updates the ACL based on action.
+  fn update(&mut self, nids: Vec<Nid>, action: AclAction) {
+    match action {
+      AclAction::Add => {
+        // Add NIDs to the allow list
+        for nid in nids {
+          let domain = nid.domain.clone();
+          let username = nid.username.clone();
 
-    for nid in allow_list {
-      let domain = nid.domain.clone();
-      let username = nid.username.clone();
+          let domain_users = self.allow_lists.entry(domain).or_default();
 
-      // Get or create the HashSet for this domain
-      let domain_users = allow_lists.entry(domain).or_default();
+          // Only add non-server users
+          if !nid.is_server() {
+            domain_users.insert(username);
+          }
+        }
+      },
+      AclAction::Remove => {
+        // Remove NIDs from the allow list
+        for nid in nids {
+          let domain = nid.domain.clone();
+          let username = nid.username.clone();
 
-      // Only add non-server users
-      if !nid.is_server() {
-        domain_users.insert(username);
-      }
+          if let Some(domain_users) = self.allow_lists.get_mut(&domain) {
+            domain_users.remove(&username);
+
+            // If the domain has no more users, remove the domain entry
+            if domain_users.is_empty() {
+              self.allow_lists.remove(&domain);
+            }
+          }
+        }
+      },
     }
-    Acl { allow_lists }
   }
 
   /// Checks if a NID is allowed based on the ACL.
@@ -1118,7 +1148,19 @@ impl Acl {
       }
     }
 
+    allow_list.sort();
     allow_list
+  }
+
+  /// Returns the total number of entries in the ACL.
+  pub fn total_entries(&self) -> usize {
+    let mut total = 0;
+
+    for (_, allowed_users) in self.allow_lists.iter() {
+      total += allowed_users.len();
+    }
+
+    total
   }
 }
 
@@ -1138,16 +1180,6 @@ pub struct ChannelAcl {
 // ===== impl ChannelAcl =====
 
 impl ChannelAcl {
-  /// Creates a new channel ACL.
-  pub fn new(allow_join_list: Vec<Nid>, allow_publish_list: Vec<Nid>, allow_read_list: Vec<Nid>) -> ChannelAcl {
-    // Return the new ChannelACL instance
-    ChannelAcl {
-      join_acl: Acl::new(allow_join_list),
-      publish_acl: Acl::new(allow_publish_list),
-      read_acl: Acl::new(allow_read_list),
-    }
-  }
-
   /// Checks if a NID is allowed to join to the channel.
   pub fn is_join_allowed(&self, nid: &Nid) -> bool {
     self.join_acl.is_allowed(nid)
@@ -1161,6 +1193,15 @@ impl ChannelAcl {
   /// Checks if a NID is allowed to read from the channel.
   pub fn is_read_allowed(&self, nid: &Nid) -> bool {
     self.read_acl.is_allowed(nid)
+  }
+
+  /// Updates the ACL based on the type and action.
+  pub fn update(&mut self, nids: Vec<Nid>, acl_type: AclType, action: AclAction) {
+    match acl_type {
+      AclType::Join => self.join_acl.update(nids, action),
+      AclType::Publish => self.publish_acl.update(nids, action),
+      AclType::Read => self.read_acl.update(nids, action),
+    }
   }
 }
 

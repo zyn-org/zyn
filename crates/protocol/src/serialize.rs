@@ -184,11 +184,10 @@ mod tests {
                 msg: Message::ChannelAcl(ChannelAclParameters {
                     id: 1,
                     channel: "!1@localhost".into(),
-                    allow_join: Vec::from(["test_user_2@localhost".into(), "example.com".into()].as_slice()),
-                    allow_publish: Vec::from(["test_user_1@localhost".into()].as_slice()),
-                    allow_read: Vec::from(["test_user_3@localhost".into()].as_slice()),
+                    r#type: "publish".into(),
+                    nids: Vec::from(["test_user_1@localhost".into(), "example.com".into()].as_slice()),
                 }),
-                expected_out: Some("CHAN_ACL id=1 allow_join:2=test_user_2@localhost example.com allow_publish:1=test_user_1@localhost allow_read:1=test_user_3@localhost channel=!1@localhost\n".to_string()),
+                expected_out: Some("CHAN_ACL id=1 channel=!1@localhost nids:2=test_user_1@localhost example.com type=publish\n".to_string()),
             },
             TestCase {
                 name: "CHAN_CONFIG",
@@ -228,8 +227,8 @@ mod tests {
             },
             TestCase {
                 name: "GET_CHAN_ACL",
-                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into() }),
-                expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost\n".to_string()),
+                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into() }),
+                expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost type=publish\n".to_string()),
             },
             TestCase {
                 name: "GET_CHAN_CONFIG",
@@ -376,11 +375,11 @@ mod tests {
                 msg: Message::SetChannelAcl(SetChannelAclParameters {
                     id: 1,
                     channel: "!1@localhost".into(),
-                    allow_join: Vec::from(["test_user_2@localhost".into()].as_slice()),
-                    allow_publish: Vec::from(["test_user_1@localhost".into(), "example.com".into()].as_slice()),
-                    allow_read: Vec::from(["test_user_3@localhost".into()].as_slice()),
+                    r#type: "publish".into(),
+                    action: "add".into(),
+                    nids: Vec::from(["test_user_1@localhost".into(), "example.com".into()].as_slice()),
                 }),
-                expected_out: Some("SET_CHAN_ACL id=1 allow_join:1=test_user_2@localhost allow_publish:2=test_user_1@localhost example.com allow_read:1=test_user_3@localhost channel=!1@localhost\n".to_string()),
+                expected_out: Some("SET_CHAN_ACL id=1 action=add channel=!1@localhost nids:2=test_user_1@localhost example.com type=publish\n".to_string()),
             },
             TestCase {
                 name: "SET_CHAN_CONFIG",

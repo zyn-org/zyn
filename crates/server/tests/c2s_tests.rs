@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use narwhal_protocol::EventKind::{MemberJoined, MemberLeft};
 use narwhal_protocol::{
-  BroadcastParameters, ChannelAclParameters, ChannelConfigurationParameters, ConnectParameters, ErrorParameters,
-  EventParameters, GetChannelAclParameters, GetChannelConfigurationParameters, JoinChannelAckParameters,
-  JoinChannelParameters, LeaveChannelAckParameters, LeaveChannelParameters, ListChannelsAckParameters,
-  ListChannelsParameters, ListMembersAckParameters, ListMembersParameters, MessageParameters, SetChannelAclParameters,
-  SetChannelConfigurationParameters,
+  AclAction, AclType, BroadcastParameters, ChannelAclParameters, ChannelConfigurationParameters, ConnectParameters,
+  ErrorParameters, EventParameters, GetChannelAclParameters, GetChannelConfigurationParameters,
+  JoinChannelAckParameters, JoinChannelParameters, LeaveChannelAckParameters, LeaveChannelParameters,
+  ListChannelsAckParameters, ListChannelsParameters, ListMembersAckParameters, ListMembersParameters,
+  MessageParameters, SetChannelAclParameters, SetChannelConfigurationParameters,
 };
 use narwhal_protocol::{IdentifyParameters, Message};
 use narwhal_test_util::{C2sSuite, assert_message, default_c2s_config};
@@ -1226,22 +1226,15 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
   // Ignore new member EVENT message...
   suite.ignore_reply(TEST_USER_1).await?;
 
-  // Set the channel ACL
-  let set_channel_acl_params = SetChannelAclParameters {
+  // Set the channel ACL for join permissions
+  let set_channel_acl_join = SetChannelAclParameters {
     id: 1234,
     channel: StringAtom::from("!test1@localhost"),
-    allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
-    allow_publish: Vec::default(),
-    allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
+    r#type: StringAtom::from("join"),
+    action: StringAtom::from("add"),
+    nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
   };
-  let set_channel_acl_params_2 = SetChannelAclParameters {
-    id: set_channel_acl_params.id,
-    channel: set_channel_acl_params.channel.clone(),
-    allow_join: set_channel_acl_params.allow_join.clone(),
-    allow_publish: set_channel_acl_params.allow_publish.clone(),
-    allow_read: set_channel_acl_params.allow_read.clone(),
-  };
-  suite.write_message(TEST_USER_1, Message::SetChannelAcl(set_channel_acl_params)).await?;
+  suite.write_message(TEST_USER_1, Message::SetChannelAcl(set_channel_acl_join)).await?;
 
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
@@ -1249,25 +1242,57 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
     ChannelAclParameters {
       id: 1234,
       channel: StringAtom::from("!test1@localhost"),
-      allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
-      allow_publish: Vec::default(),
-      allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
     }
   );
 
-  suite.write_message(TEST_USER_2, Message::SetChannelAcl(set_channel_acl_params_2)).await?;
+  // Set the channel ACL for read permissions
+  let set_channel_acl_read = SetChannelAclParameters {
+    id: 1235,
+    channel: StringAtom::from("!test1@localhost"),
+    r#type: StringAtom::from("read"),
+    action: StringAtom::from("add"),
+    nids: Vec::from([StringAtom::from("example.com")].as_slice()),
+  };
+  suite.write_message(TEST_USER_1, Message::SetChannelAcl(set_channel_acl_read)).await?;
+
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 1235,
+      channel: StringAtom::from("!test1@localhost"),
+      r#type: StringAtom::from("read"),
+      nids: Vec::from([StringAtom::from("example.com")].as_slice()),
+    }
+  );
+
+  // Test that TEST_USER_2 cannot set ACL (not the owner)
+  let set_channel_acl_unauthorized = SetChannelAclParameters {
+    id: 1236,
+    channel: StringAtom::from("!test1@localhost"),
+    r#type: StringAtom::from("publish"),
+    action: StringAtom::from("add"),
+    nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
+  };
+  suite.write_message(TEST_USER_2, Message::SetChannelAcl(set_channel_acl_unauthorized)).await?;
 
   assert_message!(
     suite.read_message(TEST_USER_2).await?,
     Message::Error,
-    ErrorParameters { id: Some(1234), reason: narwhal_protocol::ErrorReason::Forbidden.into(), detail: None }
+    ErrorParameters { id: Some(1236), reason: narwhal_protocol::ErrorReason::Forbidden.into(), detail: None }
   );
 
-  // Retrieve the channel ACL
+  // Retrieve the channel ACL for join type
   suite
     .write_message(
       TEST_USER_1,
-      Message::GetChannelAcl(GetChannelAclParameters { id: 1234, channel: StringAtom::from("!test1@localhost") }),
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 1237,
+        channel: StringAtom::from("!test1@localhost"),
+        r#type: StringAtom::from("join"),
+      }),
     )
     .await?;
 
@@ -1275,11 +1300,33 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
     suite.read_message(TEST_USER_1).await?,
     Message::ChannelAcl,
     ChannelAclParameters {
-      id: 1234,
+      id: 1237,
       channel: StringAtom::from("!test1@localhost"),
-      allow_join: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
-      allow_publish: Vec::default(),
-      allow_read: Vec::from([StringAtom::from("example.com")].as_slice()),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
+    }
+  );
+
+  // Retrieve the channel ACL for read type
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 1238,
+        channel: StringAtom::from("!test1@localhost"),
+        r#type: StringAtom::from("read"),
+      }),
+    )
+    .await?;
+
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 1238,
+      channel: StringAtom::from("!test1@localhost"),
+      r#type: StringAtom::from("read"),
+      nids: Vec::from([StringAtom::from("example.com")].as_slice()),
     }
   );
 
@@ -1309,7 +1356,9 @@ async fn test_c2s_channel_acl_max_entries() -> anyhow::Result<()> {
       Message::SetChannelAcl(SetChannelAclParameters {
         id: 1234,
         channel: StringAtom::from("!test1@localhost"),
-        allow_join: Vec::from(
+        r#type: StringAtom::from("join"),
+        action: StringAtom::from("add"),
+        nids: Vec::from(
           [
             StringAtom::from("test_user_1@localhost"),
             StringAtom::from("test_user_2@localhost"),
@@ -1317,8 +1366,6 @@ async fn test_c2s_channel_acl_max_entries() -> anyhow::Result<()> {
           ]
           .as_slice(),
         ),
-        allow_publish: Vec::default(),
-        allow_read: Vec::default(),
       }),
     )
     .await?;
@@ -1351,14 +1398,14 @@ async fn test_c2s_channel_acl_join_deny() -> anyhow::Result<()> {
   // Create a channel.
   suite.join_channel(TEST_USER_1, "!test1@localhost", None).await?;
 
-  // Set the channel ACL.
+  // Set the channel ACL for join permissions.
   suite
     .set_channel_acl(
       TEST_USER_1,
       "!test1@localhost",
+      AclType::Join,
+      AclAction::Add,
       Vec::from([StringAtom::from("test_user_99@localhost")].as_slice()),
-      Vec::default(),
-      Vec::default(),
     )
     .await?;
 
@@ -1502,14 +1549,14 @@ async fn test_c2s_channel_acl_publish_deny() -> anyhow::Result<()> {
   // Ignore new member EVENT message.
   suite.ignore_reply(TEST_USER_2).await?;
 
-  // Set the channel ACL.
+  // Set the channel ACL for publish permissions.
   suite
     .set_channel_acl(
       TEST_USER_1,
       "!test1@localhost",
-      Vec::default(),
+      AclType::Publish,
+      AclAction::Add,
       Vec::from([StringAtom::from("test_user_99@localhost")].as_slice()),
-      Vec::default(),
     )
     .await?;
 
@@ -1565,13 +1612,13 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
   suite.ignore_reply(TEST_USER_2).await?;
   suite.ignore_reply(TEST_USER_3).await?;
 
-  // Set the channel ACL.
+  // Set the channel ACL for read permissions.
   suite
     .set_channel_acl(
       TEST_USER_1,
       "!test1@localhost",
-      Vec::default(),
-      Vec::default(),
+      AclType::Read,
+      AclAction::Add,
       Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
     )
     .await?;

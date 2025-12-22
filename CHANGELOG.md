@@ -6,6 +6,7 @@ All notable changes to Narwhal will be documented in this file.
 
 * [CHANGE]: Support alphanumeric channel identifiers. [#105](https://github.com/narwhal-io/narwhal/pull/105)
 * [CHANGE]: Add `ResourceConflict` error for concurrent modification scenarios. [#109](https://github.com/narwhal-io/narwhal/pull/109)
+* [CHANGE]: Refactor ACL commands to support granular type-based operations. [#115](https://github.com/narwhal-io/narwhal/pull/115)
 * [ENHANCEMENT]: Add pagination support to `CHANNELS`/`CHANNELS_ACK` messages. [#110](https://github.com/narwhal-io/narwhal/pull/110), [#112](https://github.com/narwhal-io/narwhal/pull/112)
 * [ENHANCEMENT]: Add pagination support to `MEMBERS`/`MEMBERS_ACK` messages. [#113](https://github.com/narwhal-io/narwhal/pull/113)
 * [ENHANCEMENT]: Reduce lock contention in channel join and configuration operations. [#108](https://github.com/narwhal-io/narwhal/pull/108)

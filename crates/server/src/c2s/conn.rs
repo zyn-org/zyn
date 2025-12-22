@@ -18,7 +18,7 @@ use narwhal_protocol::ErrorReason::{
   BadRequest, InternalServerError, UnexpectedMessage, UnsupportedProtocolVersion, UsernameInUse,
 };
 use narwhal_protocol::{
-  AuthAckParameters, ConnectAckParameters, IdentifyAckParameters, Message, ModDirectAckParameters,
+  AclAction, AclType, AuthAckParameters, ConnectAckParameters, IdentifyAckParameters, Message, ModDirectAckParameters,
 };
 use narwhal_protocol::{ChannelId, Nid};
 use narwhal_util::pool::PoolBuffer;
@@ -26,7 +26,7 @@ use narwhal_util::slab::{Slab, SlabRef};
 use narwhal_util::string_atom::StringAtom;
 
 use crate::c2s::{self, Config};
-use crate::channel::{ChannelAcl, ChannelConfig, ChannelManager};
+use crate::channel::{ChannelConfig, ChannelManager};
 use crate::transmitter::{Resource, Transmitter};
 
 /// The C2S connection manager.
@@ -564,27 +564,26 @@ impl C2sDispatcherInner {
   ///
   /// Returns an error if the channel ID is invalid or if the ACL retrieval fails.
   async fn dispatch_get_channel_acl_message(&mut self, msg: Message) -> anyhow::Result<()> {
-    assert!(matches!(msg, Message::GetChannelAcl { .. }));
+    let Message::GetChannelAcl(params) = msg else { unreachable!() };
 
-    let mut correlation_id: u32 = 0;
-    let mut channel_id: Option<ChannelId> = None;
+    let correlation_id = params.id;
+    let channel_id = Self::parse_channel_id(&params.channel)?;
+    let acl_type = AclType::from_str(params.r#type.as_ref())?;
 
-    if let Message::GetChannelAcl(params) = msg {
-      correlation_id = params.id;
-      channel_id = Some(Self::parse_channel_id(&params.channel)?);
-    }
     let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
-    let channel_id = channel_id.unwrap();
-
     // Submit the request to get the channel ACL.
-    self.channel_manager.get_channel_acl(channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
+    self
+      .channel_manager
+      .get_channel_acl(channel_id.clone(), nid.clone(), acl_type, transmitter, correlation_id)
+      .await?;
 
     trace!(
       handler = self.transmitter.handler,
       nid = nid.to_string(),
       channel = channel_id.to_string(),
+      acl = acl_type.to_string(),
       "got channel ACL"
     );
 
@@ -652,49 +651,28 @@ impl C2sDispatcherInner {
   /// * The user lacks permission to modify the ACL
   /// * The ACL update operation fails
   async fn dispatch_set_channel_acl_message(&mut self, msg: Message) -> anyhow::Result<()> {
-    assert!(matches!(msg, Message::SetChannelAcl { .. }));
+    let Message::SetChannelAcl(params) = msg else { unreachable!() };
 
-    let mut correlation_id: u32 = 0;
-    let mut channel_id: Option<ChannelId> = None;
-    let mut acl = ChannelAcl::default();
+    let correlation_id = params.id;
+    let channel_id = Self::parse_channel_id(&params.channel)?;
+    let nids: Vec<Nid> = params.nids.into_iter().map(|s| Self::parse_nid(&s)).collect::<Result<_, _>>()?;
+    let acl_type = AclType::from_str(params.r#type.as_ref())?;
+    let acl_action = AclAction::from_str(params.action.as_ref())?;
 
-    if let Message::SetChannelAcl(params) = msg {
-      correlation_id = params.id;
-      channel_id = Some(Self::parse_channel_id(&params.channel)?);
-
-      let allow_join_list = {
-        match params.allow_join.into_iter().map(|s| Self::parse_nid(&s)).collect() {
-          Ok(list) => list,
-          Err(e) => return Err(e),
-        }
-      };
-      let allow_publish_list = {
-        match params.allow_publish.into_iter().map(|s| Self::parse_nid(&s)).collect() {
-          Ok(list) => list,
-          Err(e) => return Err(e),
-        }
-      };
-      let allow_read_list = {
-        match params.allow_read.into_iter().map(|s| Self::parse_nid(&s)).collect() {
-          Ok(list) => list,
-          Err(e) => return Err(e),
-        }
-      };
-
-      acl = ChannelAcl::new(allow_join_list, allow_publish_list, allow_read_list);
-    }
     let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
 
-    let channel_id = channel_id.unwrap();
-
     // Submit the request to set the channel ACL.
-    self.channel_manager.set_channel_acl(acl, channel_id.clone(), nid.clone(), transmitter, correlation_id).await?;
+    self
+      .channel_manager
+      .set_channel_acl(channel_id.clone(), nid.clone(), nids, acl_type, acl_action, transmitter, correlation_id)
+      .await?;
 
     trace!(
       handler = self.transmitter.handler,
       nid = nid.to_string(),
       channel = channel_id.to_string(),
+      acl = acl_type.to_string(),
       "set channel ACL"
     );
 

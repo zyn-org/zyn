@@ -12,6 +12,7 @@
   - [Versioning and Compatibility](#versioning-and-compatibility)
 - [Protocol](#protocol)
   - [Identifiers](#identifiers)
+  - [Access Control Lists (ACLs)](#access-control-lists-acls)
   - [Message Structure](#message-structure)
   - [Connection Types](#connection-types)
 - [Client-To-Server Messages](#client-to-server-messages)
@@ -273,6 +274,21 @@ A ChannelId identifies a communication channel in the format `!handler@domain`.
 - Handler is a non-empty alphanumeric string (up to 256 characters)
 - Handler must contain only alphanumeric characters (a-z, A-Z, 0-9)
 - Domain follows the same validation rules as NID domains
+
+### Access Control Lists (ACLs)
+
+Channels use Access Control Lists to control permissions for different operations. ACLs are managed per permission type:
+
+**ACL Types:**
+- **join**: Controls which NIDs can join the channel
+- **publish**: Controls which NIDs can broadcast messages to the channel
+- **read**: Controls which NIDs can receive messages from the channel
+
+**ACL Actions:**
+- **add**: Adds NIDs to the access control list
+- **remove**: Removes NIDs from the access control list
+
+Each ACL type is managed independently using [SET_CHAN_ACL](#set_chan_acl), allowing fine-grained control over channel permissions. For example, you can allow certain users to join and read from a channel without granting them publish permissions.
 
 ### Message Structure
 
@@ -688,57 +704,62 @@ MEMBERS_ACK id=6 channel=!42@example.com members:2=alice@example.com bob@example
 
 ### GET_CHAN_ACL
 
-Requests the access control list for a channel.
+Requests the access control list for a specific type (join, publish, or read) for a channel.
 
 **Direction**: Client → Server
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
+- `type` (string, required): ACL type to query - one of: `join`, `publish`, or `read`
 
 **Example**:
 ```
-GET_CHAN_ACL id=7 channel=!42@example.com
+GET_CHAN_ACL id=7 channel=!42@example.com type=publish
 ```
 
 ---
 
 ### CHAN_ACL
 
-Returns or sets the access control list for a channel.
+Returns the access control list for a specific type for a channel.
 
-**Direction**: Server → Client (in response to GET_CHAN_ACL)
+**Direction**: Server → Client (in response to GET_CHAN_ACL or SET_CHAN_ACL)
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
-- `allow_join` (string[], required): Array of NID patterns allowed to join
-- `allow_publish` (string[], required): Array of NID patterns allowed to publish
-- `allow_read` (string[], required): Array of NID patterns allowed to read
+- `type` (string, required): ACL type - one of: `join`, `publish`, or `read`
+- `nids` (string[], required): Array of NIDs in the access control list
 
 **Example**:
 ```
-CHAN_ACL id=7 channel=!42@example.com allow_join:2=*@example.com *@trusted.com allow_publish:2=alice@example.com bob@example.com allow_read:1=*@example.com
+CHAN_ACL id=7 channel=!42@example.com type=publish nids:2=alice@example.com bob@example.com
 ```
 
 ---
 
 ### SET_CHAN_ACL
 
-Sets the access control list for a channel.
+Modifies the access control list for a specific type for a channel.
 
 **Direction**: Client → Server
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to modify (must be non-empty)
-- `allow_join` (string[], required): Array of NID patterns allowed to join
-- `allow_publish` (string[], required): Array of NID patterns allowed to publish
-- `allow_read` (string[], required): Array of NID patterns allowed to read
+- `type` (string, required): ACL type to modify - one of: `join`, `publish`, or `read`
+- `action` (string, required): Action to perform - one of: `add` or `remove`
+- `nids` (string[], required): Array of NIDs to add or remove from the ACL
 
-**Example**:
+**Example (adding NIDs to publish ACL)**:
 ```
-SET_CHAN_ACL id=8 channel=!42@example.com allow_join:2=*@example.com *@trusted.com allow_publish:2=alice@example.com bob@example.com allow_read:1=*@example.com
+SET_CHAN_ACL id=8 channel=!42@example.com type=publish action=add nids:2=alice@example.com bob@example.com
+```
+
+**Example (removing NIDs from read ACL)**:
+```
+SET_CHAN_ACL id=9 channel=!42@example.com type=read action=remove nids:1=guest@example.com
 ```
 
 **Response**: [CHAN_ACL](#chan_acl) with the updated ACL or [ERROR](#error)
@@ -1342,7 +1363,9 @@ The payload immediately follows the message parameters without any additional fr
 ### Authorization
 
 - Channel access is controlled through ACLs (Access Control Lists)
-- ACLs specify which NID patterns can join, publish, and read from channels
+- ACLs are managed per type: **join** (who can join the channel), **publish** (who can broadcast messages), and **read** (who can receive messages)
+- Each ACL type is managed independently using [SET_CHAN_ACL](#set_chan_acl) with `add` or `remove` actions
+- ACLs specify which NIDs are allowed for each permission type
 - The `on_behalf` parameter in [JOIN](#join) and [LEAVE](#leave) allows privileged users to manage other users' channel memberships
 
 ### Rate Limiting

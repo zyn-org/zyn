@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,7 +11,8 @@ use futures::StreamExt;
 use futures::future::join_all;
 
 use narwhal_client::c2s::{AuthMethod, C2sClient, C2sConfig};
-use narwhal_protocol::QoS;
+use narwhal_protocol::Nid;
+use narwhal_protocol::{AclAction, AclType, QoS};
 use narwhal_util::pool::Pool;
 use narwhal_util::string_atom::StringAtom;
 use rand::prelude::*;
@@ -242,24 +244,33 @@ async fn create_and_join_channel(
     },
   };
 
-  // Set channel ACL
-  let mut allow_publish: Vec<StringAtom> = Vec::with_capacity(num_producers);
+  // Set channel ACL for publish
+  let mut allow_publish: Vec<Nid> = Vec::with_capacity(num_producers);
   for i in 0..num_producers {
     let producer_nid = format!("bench_producer_{}@localhost", i);
-    allow_publish.push(producer_nid.into());
+    allow_publish.push(Nid::from_str(&producer_nid).expect("valid NID"));
   }
 
-  let mut allow_read: Vec<StringAtom> = Vec::with_capacity(num_consumers);
-  for i in 0..num_consumers {
-    let consumer_nid = format!("bench_consumer_{}@localhost", i);
-    allow_read.push(consumer_nid.into());
-  }
-
-  match clients[0].set_channel_acl(channel.clone(), Vec::default(), allow_publish, allow_read).await {
+  match clients[0].set_channel_acl(channel.clone(), AclType::Publish, AclAction::Add, allow_publish).await {
     Ok(()) => {},
     Err(e) => {
-      error!("failed to set channel ACL: {}", e);
-      anyhow::bail!("failed to set channel ACL: {}", e);
+      error!("failed to set channel publish ACL: {}", e);
+      anyhow::bail!("failed to set channel publish ACL: {}", e);
+    },
+  };
+
+  // Set channel ACL for read
+  let mut allow_read: Vec<Nid> = Vec::with_capacity(num_consumers);
+  for i in 0..num_consumers {
+    let consumer_nid = format!("bench_consumer_{}@localhost", i);
+    allow_read.push(Nid::from_str(&consumer_nid).expect("valid NID"));
+  }
+
+  match clients[0].set_channel_acl(channel.clone(), AclType::Read, AclAction::Add, allow_read).await {
+    Ok(()) => {},
+    Err(e) => {
+      error!("failed to set channel read ACL: {}", e);
+      anyhow::bail!("failed to set channel read ACL: {}", e);
     },
   };
 

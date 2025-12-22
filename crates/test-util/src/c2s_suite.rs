@@ -15,8 +15,8 @@ use tokio_util::sync::CancellationToken;
 use narwhal_modulator::client::S2mClient;
 use narwhal_modulator::{Modulator, OutboundPrivatePayload};
 use narwhal_protocol::{
-  BroadcastParameters, ConnectParameters, IdentifyParameters, JoinChannelParameters, LeaveChannelParameters, Message,
-  SetChannelAclParameters, SetChannelConfigurationParameters,
+  AclAction, AclType, BroadcastParameters, ConnectParameters, IdentifyParameters, JoinChannelParameters,
+  LeaveChannelParameters, Message, SetChannelAclParameters, SetChannelConfigurationParameters,
 };
 use narwhal_server::c2s;
 use narwhal_server::channel::ChannelManager;
@@ -255,9 +255,9 @@ impl C2sSuite {
     &mut self,
     username: &str,
     channel: &str,
-    allow_join: Vec<StringAtom>,
-    allow_publish: Vec<StringAtom>,
-    allow_read: Vec<StringAtom>,
+    acl_type: AclType,
+    acl_action: AclAction,
+    nids: Vec<StringAtom>,
   ) -> anyhow::Result<()> {
     self
       .write_message(
@@ -265,9 +265,9 @@ impl C2sSuite {
         Message::SetChannelAcl(SetChannelAclParameters {
           id: 1234,
           channel: StringAtom::from(channel),
-          allow_join,
-          allow_publish,
-          allow_read,
+          r#type: StringAtom::from(acl_type.as_str()),
+          action: StringAtom::from(acl_action.as_str()),
+          nids,
         }),
       )
       .await?;

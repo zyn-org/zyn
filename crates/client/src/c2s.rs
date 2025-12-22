@@ -15,7 +15,8 @@ use tokio_stream::wrappers::ReceiverStream;
 use narwhal_common::client::{self, Handshaker, SessionInfo};
 use narwhal_common::service::C2sService;
 use narwhal_protocol::{
-  AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, Nid, QoS, request,
+  AclAction, AclType, AuthParameters, ConnectParameters, DEFAULT_MESSAGE_BUFFER_SIZE, IdentifyParameters, Message, Nid,
+  QoS, request,
 };
 use narwhal_util::conn::TlsDialer;
 use narwhal_util::pool::{Pool, PoolBuffer};
@@ -539,15 +540,20 @@ impl C2sClient {
   pub async fn set_channel_acl(
     &self,
     channel: StringAtom,
-    allow_join: Vec<StringAtom>,
-    allow_publish: Vec<StringAtom>,
-    allow_read: Vec<StringAtom>,
+    acl_type: AclType,
+    acl_action: AclAction,
+    nids: Vec<Nid>,
   ) -> anyhow::Result<()> {
     use narwhal_protocol::SetChannelAclParameters;
 
     let id = self.client.next_id().await;
-    let message =
-      Message::SetChannelAcl(SetChannelAclParameters { id, channel, allow_join, allow_publish, allow_read });
+    let message = Message::SetChannelAcl(SetChannelAclParameters {
+      id,
+      channel,
+      nids: nids.iter().map(|nid| nid.into()).collect(),
+      r#type: acl_type.as_str().into(),
+      action: acl_action.as_str().into(),
+    });
 
     let handle = self.client.send_message(message, None).await?;
     let (response, _) = handle.await??;
