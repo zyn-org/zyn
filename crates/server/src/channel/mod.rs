@@ -25,6 +25,8 @@ use crate::transmitter::{Resource, Transmitter};
 
 const DASH_MAP_SHARD_COUNT: usize = 1024;
 
+const MAX_CHANNELS_PAGE_SIZE: u32 = 100;
+
 /// The channel manager inner state.
 #[derive(Debug)]
 struct ChannelManagerInner {
@@ -143,19 +145,31 @@ impl ChannelManager {
     channel_list.sort();
 
     // Apply pagination if specified
-    let page = page.unwrap_or(1).max(1);
-    let count = count.unwrap_or(20);
+    let page = page.unwrap_or(1);
+    let page_size = count.unwrap_or(20).min(MAX_CHANNELS_PAGE_SIZE);
 
-    let start = ((page - 1) * count) as usize;
-    let end = (page * count) as usize;
+    let start = ((page - 1) * page_size) as usize;
+    let end = (page * page_size) as usize;
 
     let paginated_channels =
       if start < channel_list.len() { channel_list[start..end.min(channel_list.len())].to_vec() } else { Vec::new() };
+
+    // Include pagination information if necessary
+    let include_pagination_info = paginated_channels.len() < channel_list.len();
+
+    let (page, page_size, total_count) = if include_pagination_info {
+      (Some(page), Some(page_size), Some(channel_list.len() as u32))
+    } else {
+      (None, None, None)
+    };
 
     // Send response back to the client.
     transmitter.send_message(Message::ListChannelsAck(ListChannelsAckParameters {
       id: correlation_id,
       channels: paginated_channels,
+      page,
+      page_size,
+      total_count,
     }));
 
     Ok(())

@@ -268,21 +268,21 @@ mod tests {
             },
             TestCase {
                 name: "CHANNELS",
-                msg: Message::ListChannels(ListChannelsParameters { id: 1, count: Some(10), page: Some(1), owner: true }),
-                expected_out: Some("CHANNELS id=1 count=10 owner=true page=1\n".to_string()),
+                msg: Message::ListChannels(ListChannelsParameters { id: 1, page_size: Some(10), page: Some(1), owner: true }),
+                expected_out: Some("CHANNELS id=1 owner=true page=1 page_size=10\n".to_string()),
             },
             TestCase {
                 name: "CHANNELS_ACK",
-                msg: Message::ListChannelsAck(ListChannelsAckParameters { id: 1, channels: Vec::from(["!1@localhost".into(), "!2@localhost".into()].as_slice()) }),
-                expected_out: Some("CHANNELS_ACK id=1 channels:2=!1@localhost !2@localhost\n".to_string()),
+                msg: Message::ListChannelsAck(ListChannelsAckParameters { id: 1, channels: Vec::from(["!1@localhost".into(), "!2@localhost".into()].as_slice()), page: Some(1), page_size: Some(2), total_count: Some(2) }),
+                expected_out: Some("CHANNELS_ACK id=1 channels:2=!1@localhost !2@localhost page=1 page_size=2 total_count=2\n".to_string()),
             },
             TestCase {
-                name: "LIST_MEMBERS",
+                name: "MEMBERS",
                 msg: Message::ListMembers(ListMembersParameters { id: 1, channel: "!1@localhost".into() }),
                 expected_out: Some("MEMBERS id=1 channel=!1@localhost\n".to_string()),
             },
             TestCase {
-                name: "LIST_MEMBERS_ACK",
+                name: "MEMBERS_ACK",
                 msg: Message::ListMembersAck(ListMembersAckParameters { id: 1, channel: "!1@localhost".into(), members: Vec::from(["test_user@localhost".into()].as_slice()) }),
                 expected_out: Some("MEMBERS_ACK id=1 channel=!1@localhost members:1=test_user@localhost\n".to_string()),
             },

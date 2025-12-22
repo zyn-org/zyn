@@ -882,7 +882,7 @@ impl C2sDispatcherInner {
     if let Message::ListChannels(params) = msg {
       correlation_id = params.id;
       page = params.page;
-      count = params.count;
+      count = params.page_size;
       as_owner = params.owner;
     }
     let nid = self.nid.as_ref().unwrap().clone();

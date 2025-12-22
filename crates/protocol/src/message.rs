@@ -250,9 +250,9 @@ pub struct ListChannelsParameters {
   #[param(validate = "non_zero")]
   pub id: u32,
 
-  pub count: Option<u32>,
-
   pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
 
   pub owner: bool,
 }
@@ -261,7 +261,14 @@ pub struct ListChannelsParameters {
 pub struct ListChannelsAckParameters {
   #[param(validate = "non_zero")]
   pub id: u32,
+
   pub channels: Vec<StringAtom>,
+
+  pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
+
+  pub total_count: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
