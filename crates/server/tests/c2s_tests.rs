@@ -18,6 +18,8 @@ use narwhal_util::string_atom::StringAtom;
 const TEST_USER_1: &str = "test_user_1";
 const TEST_USER_2: &str = "test_user_2";
 const TEST_USER_3: &str = "test_user_3";
+const TEST_USER_4: &str = "test_user_4";
+const TEST_USER_5: &str = "test_user_5";
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_c2s_connect_timeout() -> anyhow::Result<()> {
@@ -636,7 +638,12 @@ async fn test_c2s_list_members() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListMembers(ListMembersParameters { id: 1, channel: StringAtom::from("!test1@localhost") }),
+      Message::ListMembers(ListMembersParameters {
+        id: 1,
+        channel: StringAtom::from("!test1@localhost"),
+        page: None,
+        page_size: None,
+      }),
     )
     .await?;
 
@@ -655,6 +662,151 @@ async fn test_c2s_list_members() -> anyhow::Result<()> {
         ]
         .as_slice()
       ),
+      page: None,
+      page_size: None,
+      total_count: None,
+    }
+  );
+
+  suite.teardown().await?;
+
+  Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_c2s_list_members_paginated() -> anyhow::Result<()> {
+  let mut suite = C2sSuite::new(default_c2s_config());
+  suite.setup().await?;
+
+  // Identify 5 test users.
+  suite.identify(TEST_USER_1).await?;
+  suite.identify(TEST_USER_2).await?;
+  suite.identify(TEST_USER_3).await?;
+  suite.identify(TEST_USER_4).await?;
+  suite.identify(TEST_USER_5).await?;
+
+  // Create a channel with user 1 and join all other users to it.
+  suite.join_channel(TEST_USER_1, "!testchannel@localhost", None).await?;
+  suite.join_channel(TEST_USER_2, "!testchannel@localhost", None).await?;
+  suite.join_channel(TEST_USER_3, "!testchannel@localhost", None).await?;
+  suite.join_channel(TEST_USER_4, "!testchannel@localhost", None).await?;
+  suite.join_channel(TEST_USER_5, "!testchannel@localhost", None).await?;
+
+  // Drain events that TEST_USER_1 received when others joined
+  for _ in 0..4 {
+    let msg = suite.read_message(TEST_USER_1).await?;
+    assert!(matches!(msg, Message::Event(_)));
+  }
+
+  // Request page 1 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListMembers(ListMembersParameters {
+        id: 1,
+        channel: StringAtom::from("!testchannel@localhost"),
+        page: Some(1),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 1 contains first 2 members.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListMembersAck,
+    ListMembersAckParameters {
+      id: 1,
+      channel: StringAtom::from("!testchannel@localhost"),
+      members: Vec::from(
+        [StringAtom::from("test_user_1@localhost"), StringAtom::from("test_user_2@localhost")].as_slice()
+      ),
+      page: Some(1),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request page 2 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListMembers(ListMembersParameters {
+        id: 2,
+        channel: StringAtom::from("!testchannel@localhost"),
+        page: Some(2),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 2 contains next 2 members.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListMembersAck,
+    ListMembersAckParameters {
+      id: 2,
+      channel: StringAtom::from("!testchannel@localhost"),
+      members: Vec::from(
+        [StringAtom::from("test_user_3@localhost"), StringAtom::from("test_user_4@localhost")].as_slice()
+      ),
+      page: Some(2),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request page 3 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListMembers(ListMembersParameters {
+        id: 3,
+        channel: StringAtom::from("!testchannel@localhost"),
+        page: Some(3),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 3 contains last member.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListMembersAck,
+    ListMembersAckParameters {
+      id: 3,
+      channel: StringAtom::from("!testchannel@localhost"),
+      members: Vec::from([StringAtom::from("test_user_5@localhost")].as_slice()),
+      page: Some(3),
+      page_size: Some(2),
+      total_count: Some(5)
+    }
+  );
+
+  // Request page 4 with page_size of 2 (beyond available data).
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::ListMembers(ListMembersParameters {
+        id: 4,
+        channel: StringAtom::from("!testchannel@localhost"),
+        page: Some(4),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 4 is empty.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ListMembersAck,
+    ListMembersAckParameters {
+      id: 4,
+      channel: StringAtom::from("!testchannel@localhost"),
+      members: Vec::new(),
+      page: Some(4),
+      page_size: Some(2),
+      total_count: Some(5)
     }
   );
 

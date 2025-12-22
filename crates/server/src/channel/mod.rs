@@ -27,6 +27,8 @@ const DASH_MAP_SHARD_COUNT: usize = 1024;
 
 const MAX_CHANNELS_PAGE_SIZE: u32 = 100;
 
+const MAX_MEMBERS_PAGE_SIZE: u32 = 100;
+
 /// The channel manager inner state.
 #[derive(Debug)]
 struct ChannelManagerInner {
@@ -191,6 +193,8 @@ impl ChannelManager {
     &self,
     channel_id: ChannelId,
     nid: Nid,
+    page: Option<u32>,
+    count: Option<u32>,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -220,16 +224,38 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(UserNotInChannel).with_id(correlation_id).into());
     }
     // Gather all members of the channel and sort them.
-    let mut members: Vec<StringAtom> = channel_inner.members.iter().map(|member_nid| member_nid.into()).collect();
+    let mut member_list: Vec<StringAtom> = channel_inner.members.iter().map(|member_nid| member_nid.into()).collect();
     drop(channel_inner);
 
-    members.sort();
+    member_list.sort();
+
+    // Apply pagination if specified
+    let page = page.unwrap_or(1);
+    let page_size = count.unwrap_or(20).min(MAX_MEMBERS_PAGE_SIZE);
+
+    let start = ((page - 1) * page_size) as usize;
+    let end = (page * page_size) as usize;
+
+    let paginated_members =
+      if start < member_list.len() { member_list[start..end.min(member_list.len())].to_vec() } else { Vec::new() };
+
+    // Include pagination information if necessary
+    let include_pagination_info = paginated_members.len() < member_list.len();
+
+    let (page, page_size, total_count) = if include_pagination_info {
+      (Some(page), Some(page_size), Some(member_list.len() as u32))
+    } else {
+      (None, None, None)
+    };
 
     // Send response back to the client.
     transmitter.send_message(Message::ListMembersAck(ListMembersAckParameters {
       id: correlation_id,
       channel: channel_id.into(),
-      members,
+      members: paginated_members,
+      page,
+      page_size,
+      total_count,
     }));
 
     Ok(())

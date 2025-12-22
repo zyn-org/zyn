@@ -278,6 +278,10 @@ pub struct ListMembersParameters {
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
+
+  pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -289,6 +293,12 @@ pub struct ListMembersAckParameters {
   pub channel: StringAtom,
 
   pub members: Vec<StringAtom>,
+
+  pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
+
+  pub total_count: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
