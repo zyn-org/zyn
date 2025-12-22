@@ -350,13 +350,13 @@ mod tests {
         },
     TestCase {
             name: "CHANNELS",
-            input: b"CHANNELS id=1 count=10 page=1 owner=true",
-            expected: Ok(Message::ListChannels(ListChannelsParameters { id: 1, count: Some(10), page: Some(1), owner: true })),
+            input: b"CHANNELS id=1 page_size=10 page=1 owner=true",
+            expected: Ok(Message::ListChannels(ListChannelsParameters { id: 1, page_size: Some(10), page: Some(1), owner: true })),
         },
     TestCase {
             name: "CHANNELS_ACK",
-            input: b"CHANNELS_ACK id=1 channels:2=!1@localhost !2@localhost",
-            expected: Ok(Message::ListChannelsAck(ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!1@localhost"), StringAtom::from("!2@localhost")].as_slice()) })),
+            input: b"CHANNELS_ACK id=1 channels:2=!1@localhost !2@localhost page=1 page_size=2 total_count=2",
+            expected: Ok(Message::ListChannelsAck(ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!1@localhost"), StringAtom::from("!2@localhost")].as_slice()), page: Some(1), page_size: Some(2), total_count: Some(2) })),
         },
     TestCase {
             name: "MEMBERS",

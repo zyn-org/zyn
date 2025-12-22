@@ -735,7 +735,7 @@ async fn test_c2s_modulator_channel_survives_single_connection_drop() -> anyhow:
   conn2
     .write_message(Message::ListChannels(narwhal_protocol::ListChannelsParameters {
       id: 5678,
-      count: None,
+      page_size: None,
       page: None,
       owner: false,
     }))

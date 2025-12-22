@@ -681,7 +681,7 @@ async fn test_c2s_list_channels() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 1, count: None, page: None, owner: false }),
+      Message::ListChannels(ListChannelsParameters { id: 1, page_size: None, page: None, owner: false }),
     )
     .await?;
 
@@ -692,6 +692,9 @@ async fn test_c2s_list_channels() -> anyhow::Result<()> {
     ListChannelsAckParameters {
       id: 1,
       channels: Vec::from([StringAtom::from("!test1@localhost"), StringAtom::from("!test2@localhost")].as_slice()),
+      page: None,
+      page_size: None,
+      total_count: None,
     }
   );
 
@@ -718,7 +721,7 @@ async fn test_c2s_list_channels_as_owner() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 1, count: None, page: None, owner: true }),
+      Message::ListChannels(ListChannelsParameters { id: 1, page_size: None, page: None, owner: true }),
     )
     .await?;
 
@@ -726,7 +729,13 @@ async fn test_c2s_list_channels_as_owner() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::ListChannelsAck,
-    ListChannelsAckParameters { id: 1, channels: Vec::from([StringAtom::from("!test1@localhost")].as_slice()) }
+    ListChannelsAckParameters {
+      id: 1,
+      channels: Vec::from([StringAtom::from("!test1@localhost")].as_slice()),
+      page: None,
+      page_size: None,
+      total_count: None,
+    }
   );
 
   suite.teardown().await?;
@@ -753,7 +762,7 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 1, count: Some(2), page: Some(1), owner: false }),
+      Message::ListChannels(ListChannelsParameters { id: 1, page_size: Some(2), page: Some(1), owner: false }),
     )
     .await?;
 
@@ -766,6 +775,9 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
       channels: Vec::from(
         [StringAtom::from("!channel1@localhost"), StringAtom::from("!channel2@localhost")].as_slice()
       ),
+      page: Some(1),
+      page_size: Some(2),
+      total_count: Some(5),
     }
   );
 
@@ -773,7 +785,7 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 2, count: Some(2), page: Some(2), owner: false }),
+      Message::ListChannels(ListChannelsParameters { id: 2, page_size: Some(2), page: Some(2), owner: false }),
     )
     .await?;
 
@@ -786,6 +798,9 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
       channels: Vec::from(
         [StringAtom::from("!channel3@localhost"), StringAtom::from("!channel4@localhost")].as_slice()
       ),
+      page: Some(2),
+      page_size: Some(2),
+      total_count: Some(5),
     }
   );
 
@@ -793,7 +808,7 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 3, count: Some(2), page: Some(3), owner: false }),
+      Message::ListChannels(ListChannelsParameters { id: 3, page_size: Some(2), page: Some(3), owner: false }),
     )
     .await?;
 
@@ -801,14 +816,20 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::ListChannelsAck,
-    ListChannelsAckParameters { id: 3, channels: Vec::from([StringAtom::from("!channel5@localhost")].as_slice()) }
+    ListChannelsAckParameters {
+      id: 3,
+      channels: Vec::from([StringAtom::from("!channel5@localhost")].as_slice()),
+      page: Some(3),
+      page_size: Some(2),
+      total_count: Some(5)
+    }
   );
 
   // Request page 4 with count of 2 (beyond available data).
   suite
     .write_message(
       TEST_USER_1,
-      Message::ListChannels(ListChannelsParameters { id: 4, count: Some(2), page: Some(4), owner: false }),
+      Message::ListChannels(ListChannelsParameters { id: 4, page_size: Some(2), page: Some(4), owner: false }),
     )
     .await?;
 
@@ -816,7 +837,7 @@ async fn test_c2s_list_channels_paginated() -> anyhow::Result<()> {
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
     Message::ListChannelsAck,
-    ListChannelsAckParameters { id: 4, channels: Vec::new() }
+    ListChannelsAckParameters { id: 4, channels: Vec::new(), page: Some(4), page_size: Some(2), total_count: Some(5) }
   );
 
   suite.teardown().await?;
