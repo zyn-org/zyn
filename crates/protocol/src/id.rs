@@ -78,7 +78,7 @@ impl Display for NidParsingError {
 impl std::error::Error for NidParsingError {}
 
 /// The channel ID used by the client/server to identify a channel.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ChannelId {
   /// The channel handler.
   pub handler: StringAtom,
@@ -188,7 +188,7 @@ impl FromStr for ChannelId {
 ///
 /// A NID consists of a username and domain in the format `username@domain`.
 /// Server NIDs have an empty username and are represented simply as `domain`.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Nid {
   /// The username of the NID.
   pub username: StringAtom,

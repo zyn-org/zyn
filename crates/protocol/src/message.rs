@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use crate::deserialize::ParameterReader;
 use crate::serialize::ParameterWriter;
-use crate::{ErrorReason, EventKind};
+use crate::{AclAction, AclType, ErrorReason, EventKind};
 
 use narwhal_protocol_macros::ProtocolMessageParameters;
 use narwhal_util::string_atom::StringAtom;
@@ -122,9 +122,10 @@ pub struct ChannelAclParameters {
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
 
-  pub allow_join: Vec<StringAtom>,
-  pub allow_publish: Vec<StringAtom>,
-  pub allow_read: Vec<StringAtom>,
+  #[param(name = "type", validate = "non_empty")]
+  pub r#type: StringAtom,
+
+  pub nids: Vec<StringAtom>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -186,6 +187,9 @@ pub struct GetChannelAclParameters {
 
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
+
+  #[param(name = "type", validate = "non_empty")]
+  pub r#type: StringAtom,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -444,9 +448,13 @@ pub struct SetChannelAclParameters {
   #[param(validate = "non_empty")]
   pub channel: StringAtom,
 
-  pub allow_join: Vec<StringAtom>,
-  pub allow_publish: Vec<StringAtom>,
-  pub allow_read: Vec<StringAtom>,
+  #[param(name = "type", validate = "non_empty")]
+  pub r#type: StringAtom,
+
+  #[param(validate = "non_empty")]
+  pub action: StringAtom,
+
+  pub nids: Vec<StringAtom>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -751,7 +759,14 @@ impl Message {
         Ok(())
       },
       BroadcastAck(params) => params.validate(),
-      ChannelAcl(params) => params.validate(),
+      ChannelAcl(params) => {
+        params.validate()?;
+
+        // Validate that type enum is valid
+        AclType::from_str(params.r#type.as_ref())?;
+
+        Ok(())
+      },
       ChannelConfiguration(params) => params.validate(),
       Connect(params) => params.validate(),
       ConnectAck(params) => params.validate(),
@@ -771,7 +786,14 @@ impl Message {
 
         Ok(())
       },
-      GetChannelAcl(params) => params.validate(),
+      GetChannelAcl(params) => {
+        params.validate()?;
+
+        // Validate that type enum is valid
+        AclType::from_str(params.r#type.as_ref())?;
+
+        Ok(())
+      },
       GetChannelConfiguration(params) => params.validate(),
       Identify(params) => params.validate(),
       IdentifyAck(params) => params.validate(),
@@ -802,7 +824,15 @@ impl Message {
       S2mForwardBroadcastPayloadAck(params) => params.validate(),
       S2mModDirect(params) => params.validate(),
       S2mModDirectAck(params) => params.validate(),
-      SetChannelAcl(params) => params.validate(),
+      SetChannelAcl(params) => {
+        params.validate()?;
+
+        // Validate that type and action enum values are valid
+        AclType::from_str(params.r#type.as_ref())?;
+        AclAction::from_str(params.action.as_ref())?;
+
+        Ok(())
+      },
       SetChannelConfiguration(params) => params.validate(),
     }
   }

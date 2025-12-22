@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
+mod acl;
 mod deserialize;
 mod error;
 mod event;
@@ -9,6 +10,7 @@ mod qos;
 mod serialize;
 mod stream;
 
+pub use acl::*;
 pub use deserialize::DEFAULT_MESSAGE_BUFFER_SIZE;
 pub use deserialize::deserialize;
 pub use error::*;

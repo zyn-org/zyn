@@ -282,13 +282,12 @@ mod tests {
     TestCase { name: "BROADCAST_ACK", input: b"BROADCAST_ACK id=1", expected: Ok(Message::BroadcastAck(BroadcastAckParameters { id: 1 })) },
     TestCase {
             name: "CHAN_ACL",
-            input: b"CHAN_ACL id=1 channel=!1@localhost allow_publish:2=test_user_1@localhost example.com allow_read:1=test_user_2@localhost",
+            input: b"CHAN_ACL id=1 channel=!1@localhost type=publish nids:2=test_user_1@localhost example.com",
             expected: Ok(Message::ChannelAcl(ChannelAclParameters {
                 id: 1,
                 channel: StringAtom::from("!1@localhost"),
-                allow_join: Vec::default(),
-                allow_publish: Vec::from([StringAtom::from("test_user_1@localhost"), StringAtom::from("example.com")].as_slice()),
-                allow_read: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
+                r#type: StringAtom::from("publish"),
+                nids: Vec::from([StringAtom::from("test_user_1@localhost"), StringAtom::from("example.com")].as_slice()),
             })),
     },
     TestCase {
@@ -324,7 +323,7 @@ mod tests {
             })),
         },
     TestCase { name: "EVENT", input: b"EVENT kind=MEMBER_JOINED channel=!1@localhost nid=test@localhost owner=true", expected: Ok(Message::Event(EventParameters { kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), nid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
-    TestCase { name: "GET_CHAN_ACL", input: b"GET_CHAN_ACL id=1 channel=!1@localhost", expected: Ok(Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: StringAtom::from("!1@localhost") })) },
+    TestCase { name: "GET_CHAN_ACL", input: b"GET_CHAN_ACL id=1 channel=!1@localhost type=publish", expected: Ok(Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: StringAtom::from("!1@localhost"), r#type: StringAtom::from("publish") })) },
     TestCase { name: "GET_CHAN_CONFIG", input: b"GET_CHAN_CONFIG id=1 channel=!1@localhost", expected: Ok(Message::GetChannelConfiguration(GetChannelConfigurationParameters { id: 1, channel: StringAtom::from("!1@localhost") })) },
     TestCase {
         name: "IDENTIFY",
@@ -400,13 +399,13 @@ mod tests {
     TestCase { name: "S2M_MOD_DIRECT_ACK", input: b"S2M_MOD_DIRECT_ACK id=1 valid=true", expected: Ok(Message::S2mModDirectAck(S2mModDirectAckParameters { id: 1, valid: true })) },
     TestCase {
             name: "SET_CHAN_ACL",
-            input: b"SET_CHAN_ACL id=1 channel=!1@localhost allow_publish:2=test_user_1@localhost example.com allow_read:1=test_user_2@localhost",
+            input: b"SET_CHAN_ACL id=1 channel=!1@localhost type=publish action=add nids:2=test_user_1@localhost example.com",
             expected: Ok(Message::SetChannelAcl(SetChannelAclParameters {
                 id: 1,
                 channel: StringAtom::from("!1@localhost"),
-                allow_join: Vec::default(),
-                allow_publish: Vec::from([StringAtom::from("test_user_1@localhost"), StringAtom::from("example.com")].as_slice()),
-                allow_read: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
+                r#type: StringAtom::from("publish"),
+                action: StringAtom::from("add"),
+                nids: Vec::from([StringAtom::from("test_user_1@localhost"), StringAtom::from("example.com")].as_slice()),
             })),
     },
     TestCase {
