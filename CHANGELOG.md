@@ -11,6 +11,7 @@ All notable changes to Narwhal will be documented in this file.
 * [ENHANCEMENT]: Add pagination support to `CHANNELS`/`CHANNELS_ACK` messages. [#110](https://github.com/narwhal-io/narwhal/pull/110), [#112](https://github.com/narwhal-io/narwhal/pull/112)
 * [ENHANCEMENT]: Add pagination support to `MEMBERS`/`MEMBERS_ACK` messages. [#113](https://github.com/narwhal-io/narwhal/pull/113)
 * [ENHANCEMENT]: Add pagination support to `GET_CHAN_ACL`/`CHAN_ACL` messages. [#117](https://github.com/narwhal-io/narwhal/pull/117)
+* [ENHANCEMENT]: Add `RESPONSE_TOO_LARGE` error for graceful handling of oversized server responses. [#118](https://github.com/narwhal-io/narwhal/pull/118)
 * [ENHANCEMENT]: Reduce lock contention in channel join and configuration operations. [#108](https://github.com/narwhal-io/narwhal/pull/108)
 
 ## 0.3.0 (2025-12-12) 🎄
