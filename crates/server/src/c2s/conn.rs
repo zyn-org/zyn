@@ -569,6 +569,8 @@ impl C2sDispatcherInner {
     let correlation_id = params.id;
     let channel_id = Self::parse_channel_id(&params.channel)?;
     let acl_type = AclType::from_str(params.r#type.as_ref())?;
+    let page = params.page;
+    let page_size = params.page_size;
 
     let nid = self.nid.as_ref().unwrap().clone();
     let transmitter = self.transmitter.clone();
@@ -576,7 +578,7 @@ impl C2sDispatcherInner {
     // Submit the request to get the channel ACL.
     self
       .channel_manager
-      .get_channel_acl(channel_id.clone(), nid.clone(), acl_type, transmitter, correlation_id)
+      .get_channel_acl(channel_id.clone(), nid.clone(), acl_type, page, page_size, transmitter, correlation_id)
       .await?;
 
     trace!(

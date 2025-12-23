@@ -554,6 +554,8 @@ impl ChannelManager {
     channel_id: ChannelId,
     nid: Nid,
     acl_type: AclType,
+    page: Option<u32>,
+    page_size: Option<u32>,
     transmitter: Arc<dyn Transmitter>,
     correlation_id: u32,
   ) -> anyhow::Result<()> {
@@ -593,12 +595,29 @@ impl ChannelManager {
 
     drop(channel_inner);
 
+    let all_nids: Vec<StringAtom> = acl.allow_list().into_iter().map(|z| z.into()).collect();
+    let total_count = all_nids.len() as u32;
+
+    // Apply pagination if requested
+    let (nids, response_page, response_page_size, response_total_count) =
+      if let (Some(page), Some(page_size)) = (page, page_size) {
+        let start = ((page - 1) * page_size) as usize;
+        let end = (start + page_size as usize).min(all_nids.len());
+        let paginated_nids = if start < all_nids.len() { all_nids[start..end].to_vec() } else { Vec::new() };
+        (paginated_nids, Some(page), Some(page_size), Some(total_count))
+      } else {
+        (all_nids, None, None, None)
+      };
+
     // Send response back to the client.
     transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
       id: correlation_id,
       channel: channel_id.into(),
       r#type: acl_type.as_str().into(),
-      nids: acl.allow_list().into_iter().map(|z| z.into()).collect(),
+      nids,
+      page: response_page,
+      page_size: response_page_size,
+      total_count: response_total_count,
     }));
 
     Ok(())

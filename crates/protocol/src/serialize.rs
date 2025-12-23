@@ -186,6 +186,9 @@ mod tests {
                     channel: "!1@localhost".into(),
                     r#type: "publish".into(),
                     nids: Vec::from(["test_user_1@localhost".into(), "example.com".into()].as_slice()),
+                    page: None,
+                    page_size: None,
+                    total_count: None,
                 }),
                 expected_out: Some("CHAN_ACL id=1 channel=!1@localhost nids:2=test_user_1@localhost example.com type=publish\n".to_string()),
             },
@@ -227,8 +230,13 @@ mod tests {
             },
             TestCase {
                 name: "GET_CHAN_ACL",
-                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into() }),
+                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into(), page: None, page_size: None }),
                 expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost type=publish\n".to_string()),
+            },
+            TestCase {
+                name: "GET_CHAN_ACL_PAGINATED",
+                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into(), page: Some(2), page_size: Some(10) }),
+                expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost page=2 page_size=10 type=publish\n".to_string()),
             },
             TestCase {
                 name: "GET_CHAN_CONFIG",

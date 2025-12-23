@@ -128,6 +128,12 @@ pub struct ChannelAclParameters {
   pub r#type: StringAtom,
 
   pub nids: Vec<StringAtom>,
+
+  pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
+
+  pub total_count: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -192,6 +198,10 @@ pub struct GetChannelAclParameters {
 
   #[param(name = "type", validate = "non_empty")]
   pub r#type: StringAtom,
+
+  pub page: Option<u32>,
+
+  pub page_size: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
