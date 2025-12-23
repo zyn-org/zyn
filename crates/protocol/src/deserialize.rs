@@ -288,6 +288,9 @@ mod tests {
                 channel: StringAtom::from("!1@localhost"),
                 r#type: StringAtom::from("publish"),
                 nids: Vec::from([StringAtom::from("test_user_1@localhost"), StringAtom::from("example.com")].as_slice()),
+                page: None,
+                page_size: None,
+                total_count: None,
             })),
     },
     TestCase {
@@ -323,7 +326,7 @@ mod tests {
             })),
         },
     TestCase { name: "EVENT", input: b"EVENT kind=MEMBER_JOINED channel=!1@localhost nid=test@localhost owner=true", expected: Ok(Message::Event(EventParameters { kind: StringAtom::from("MEMBER_JOINED"), channel: Some(StringAtom::from("!1@localhost")), nid: Some(StringAtom::from("test@localhost")), owner: Some(true) })) },
-    TestCase { name: "GET_CHAN_ACL", input: b"GET_CHAN_ACL id=1 channel=!1@localhost type=publish", expected: Ok(Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: StringAtom::from("!1@localhost"), r#type: StringAtom::from("publish") })) },
+    TestCase { name: "GET_CHAN_ACL", input: b"GET_CHAN_ACL id=1 channel=!1@localhost page=1 page_size=10 type=publish", expected: Ok(Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: StringAtom::from("!1@localhost"), r#type: StringAtom::from("publish"), page: Some(1), page_size: Some(10) })) },
     TestCase { name: "GET_CHAN_CONFIG", input: b"GET_CHAN_CONFIG id=1 channel=!1@localhost", expected: Ok(Message::GetChannelConfiguration(GetChannelConfigurationParameters { id: 1, channel: StringAtom::from("!1@localhost") })) },
     TestCase {
         name: "IDENTIFY",

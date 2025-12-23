@@ -1274,6 +1274,8 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
         id: 1237,
         channel: StringAtom::from("!test1@localhost"),
         r#type: StringAtom::from("join"),
+        page: None,
+        page_size: None,
       }),
     )
     .await?;
@@ -1286,6 +1288,9 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
       channel: StringAtom::from("!test1@localhost"),
       r#type: StringAtom::from("join"),
       nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
+      page: None,
+      page_size: None,
+      total_count: None,
     }
   );
 
@@ -1297,6 +1302,8 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
         id: 1238,
         channel: StringAtom::from("!test1@localhost"),
         r#type: StringAtom::from("read"),
+        page: None,
+        page_size: None,
       }),
     )
     .await?;
@@ -1309,6 +1316,204 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
       channel: StringAtom::from("!test1@localhost"),
       r#type: StringAtom::from("read"),
       nids: Vec::from([StringAtom::from("example.com")].as_slice()),
+      page: None,
+      page_size: None,
+      total_count: None,
+    }
+  );
+
+  suite.teardown().await?;
+
+  Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_c2s_channel_acl_paginated() -> anyhow::Result<()> {
+  let mut suite = C2sSuite::new(default_c2s_config());
+  suite.setup().await?;
+
+  // Identify test users.
+  suite.identify(TEST_USER_1).await?;
+
+  // Create a channel with TEST_USER_1.
+  suite.join_channel(TEST_USER_1, "!testchannel@localhost", None).await?;
+
+  // Add multiple nids to the channel ACL (join type).
+  let set_channel_acl = SetChannelAclParameters {
+    id: 1,
+    channel: StringAtom::from("!testchannel@localhost"),
+    r#type: StringAtom::from("join"),
+    action: StringAtom::from("add"),
+    nids: Vec::from(
+      [
+        StringAtom::from("user1@example.com"),
+        StringAtom::from("user2@example.com"),
+        StringAtom::from("user3@example.com"),
+        StringAtom::from("user4@example.com"),
+        StringAtom::from("user5@example.com"),
+      ]
+      .as_slice(),
+    ),
+  };
+  suite.write_message(TEST_USER_1, Message::SetChannelAcl(set_channel_acl)).await?;
+
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::SetChannelAclAck,
+    SetChannelAclAckParameters { id: 1 }
+  );
+
+  // Request page 1 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 2,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: Some(1),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 1 contains first 2 nids.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 2,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from([StringAtom::from("user1@example.com"), StringAtom::from("user2@example.com"),].as_slice()),
+      page: Some(1),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request page 2 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 3,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: Some(2),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 2 contains next 2 nids.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 3,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from([StringAtom::from("user3@example.com"), StringAtom::from("user4@example.com"),].as_slice()),
+      page: Some(2),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request page 3 with page_size of 2.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 4,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: Some(3),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 3 contains last nid.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 4,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from([StringAtom::from("user5@example.com")].as_slice()),
+      page: Some(3),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request page 4 with page_size of 2 (beyond available data).
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 5,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: Some(4),
+        page_size: Some(2),
+      }),
+    )
+    .await?;
+
+  // Verify page 4 is empty.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 5,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      nids: Vec::new(),
+      page: Some(4),
+      page_size: Some(2),
+      total_count: Some(5),
+    }
+  );
+
+  // Request without pagination to verify we get all nids.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 6,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: None,
+        page_size: None,
+      }),
+    )
+    .await?;
+
+  // Verify we get all nids when no pagination is specified.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::ChannelAcl,
+    ChannelAclParameters {
+      id: 6,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      nids: Vec::from(
+        [
+          StringAtom::from("user1@example.com"),
+          StringAtom::from("user2@example.com"),
+          StringAtom::from("user3@example.com"),
+          StringAtom::from("user4@example.com"),
+          StringAtom::from("user5@example.com"),
+        ]
+        .as_slice()
+      ),
+      page: None,
+      page_size: None,
+      total_count: None,
     }
   );
 

@@ -714,10 +714,17 @@ Requests the access control list for a specific type (join, publish, or read) fo
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID to query (must be non-empty)
 - `type` (string, required): ACL type to query - one of: `join`, `publish`, or `read`
+- `page` (u32, optional): Page number for pagination (1-based). Must be used together with `page_size`
+- `page_size` (u32, optional): Number of items per page. Must be used together with `page`
 
 **Example**:
 ```
 GET_CHAN_ACL id=7 channel=!42@example.com type=publish
+```
+
+**Example with pagination**:
+```
+GET_CHAN_ACL id=7 channel=!42@example.com type=publish page=2 page_size=10
 ```
 
 ---
@@ -732,11 +739,19 @@ Returns the access control list for a specific type for a channel.
 - `id` (u32, required): Request identifier (must be non-zero)
 - `channel` (string, required): Channel ID (must be non-empty)
 - `type` (string, required): ACL type - one of: `join`, `publish`, or `read`
-- `nids` (string[], required): Array of NIDs in the access control list
+- `nids` (string[], required): Array of NIDs in the access control list (may be a subset if pagination is used)
+- `page` (u32, optional): Current page number (present when pagination was requested)
+- `page_size` (u32, optional): Number of items per page (present when pagination was requested)
+- `total_count` (u32, optional): Total number of NIDs in the ACL (present when pagination was requested)
 
 **Example**:
 ```
 CHAN_ACL id=7 channel=!42@example.com type=publish nids:2=alice@example.com bob@example.com
+```
+
+**Example with pagination**:
+```
+CHAN_ACL id=7 channel=!42@example.com type=publish page=2 page_size=10 total_count=25 nids:10=user1@example.com user2@example.com user3@example.com user4@example.com user5@example.com user6@example.com user7@example.com user8@example.com user9@example.com user10@example.com
 ```
 
 ---
@@ -1457,11 +1472,14 @@ Messages that expect responses use an `id` parameter for correlation:
   - Added `SET_CHAN_CONFIG_ACK` message: SET_CHAN_CONFIG now returns a simple acknowledgment instead of the full configuration
   - Changed `CHAN_ACL` to only be sent in response to GET_CHAN_ACL (not SET_CHAN_ACL)
   - Changed `CHAN_CONFIG` to only be sent in response to GET_CHAN_CONFIG (not SET_CHAN_CONFIG)
+  - Added pagination support to `CHANNELS`/`CHANNELS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
+  - Added pagination support to `MEMBERS`/`MEMBERS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
+  - Added pagination support to `GET_CHAN_ACL`/`CHAN_ACL` messages with optional `page`, `page_size`, and `total_count` parameters
   - Clients should use GET_CHAN_ACL and GET_CHAN_CONFIG to retrieve current values after SET operations
 - **Version 1.1** (December 2025):
   - Changed ChannelId handler from numeric (u32) to alphanumeric string (up to 256 characters)
-  - Made `channel` parameter required in JOIN message (previously optional for dynamic channel creation)
-  - Updated S2M_FORWARD_BROADCAST_PAYLOAD `channel` parameter from u32 to alphanumeric string
+  - Made `channel` parameter required in `JOIN` message (previously optional for dynamic channel creation)
+  - Updated `S2M_FORWARD_BROADCAST_PAYLOAD` `channel` parameter from u32 to alphanumeric string
 - **Version 1**: Initial protocol specification
 
 ## License

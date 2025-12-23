@@ -10,6 +10,7 @@ All notable changes to Narwhal will be documented in this file.
 * [CHANGE]: Add dedicated ACK messages for `SET_CHAN_ACL` and `SET_CHAN_CONFIG` operations. [#116](https://github.com/narwhal-io/narwhal/pull/116)
 * [ENHANCEMENT]: Add pagination support to `CHANNELS`/`CHANNELS_ACK` messages. [#110](https://github.com/narwhal-io/narwhal/pull/110), [#112](https://github.com/narwhal-io/narwhal/pull/112)
 * [ENHANCEMENT]: Add pagination support to `MEMBERS`/`MEMBERS_ACK` messages. [#113](https://github.com/narwhal-io/narwhal/pull/113)
+* [ENHANCEMENT]: Add pagination support to `GET_CHAN_ACL`/`CHAN_ACL` messages. [#117](https://github.com/narwhal-io/narwhal/pull/117)
 * [ENHANCEMENT]: Reduce lock contention in channel join and configuration operations. [#108](https://github.com/narwhal-io/narwhal/pull/108)
 
 ## 0.3.0 (2025-12-12) 🎄
