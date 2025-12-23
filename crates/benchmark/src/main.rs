@@ -231,7 +231,7 @@ async fn create_and_join_channel(
   channel_index: usize,
 ) -> Result<StringAtom> {
   // Generate a unique channel name using the provided index
-  let channel_id = format!("!bench_{}@localhost", channel_index);
+  let channel_id = format!("!bench{}@localhost", channel_index);
   let channel: StringAtom = channel_id.into();
 
   // First client joins and creates the channel
