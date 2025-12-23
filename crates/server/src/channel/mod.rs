@@ -549,6 +549,7 @@ impl ChannelManager {
   /// # Returns
   ///
   /// A result indicating success or failure
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_channel_acl(
     &self,
     channel_id: ChannelId,

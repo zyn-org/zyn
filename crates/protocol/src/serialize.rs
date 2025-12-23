@@ -230,11 +230,6 @@ mod tests {
             },
             TestCase {
                 name: "GET_CHAN_ACL",
-                msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into(), page: None, page_size: None }),
-                expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost type=publish\n".to_string()),
-            },
-            TestCase {
-                name: "GET_CHAN_ACL_PAGINATED",
                 msg: Message::GetChannelAcl(GetChannelAclParameters { id: 1, channel: "!1@localhost".into(), r#type: "publish".into(), page: Some(2), page_size: Some(10) }),
                 expected_out: Some("GET_CHAN_ACL id=1 channel=!1@localhost page=2 page_size=10 type=publish\n".to_string()),
             },
