@@ -13,7 +13,7 @@ use narwhal_protocol::ErrorReason::{
 use narwhal_protocol::{
   AclAction, AclType, BroadcastAckParameters, ChannelAclParameters, ChannelConfigurationParameters,
   JoinChannelAckParameters, LeaveChannelAckParameters, ListChannelsAckParameters, ListMembersAckParameters, Message,
-  MessageParameters, QoS,
+  MessageParameters, QoS, SetChannelAclAckParameters, SetChannelConfigurationAckParameters,
 };
 use narwhal_protocol::{ChannelId, Nid};
 use narwhal_protocol::{Event, EventKind};
@@ -679,18 +679,11 @@ impl ChannelManager {
     }
 
     // Set the updated ACL
-    let acl_nids = new_acl.allow_list().into_iter().map(|z| z.into()).collect();
-
     channel_inner.set_acl(new_acl, acl_type);
     drop(channel_inner);
 
-    // Send response back to the client.
-    transmitter.send_message(Message::ChannelAcl(ChannelAclParameters {
-      id: correlation_id,
-      channel: channel_id.into(),
-      r#type: acl_type.as_str().into(),
-      nids: acl_nids,
-    }));
+    // Send ACK response back to the client.
+    transmitter.send_message(Message::SetChannelAclAck(SetChannelAclAckParameters { id: correlation_id }));
 
     Ok(())
   }
@@ -818,17 +811,13 @@ impl ChannelManager {
       return Err(narwhal_protocol::Error::new(Forbidden).with_id(correlation_id).into());
     }
     // Merge the current configuration with the new one.
-    let new_config = channel_inner.merge_config(&config);
+    channel_inner.merge_config(&config);
 
     drop(channel_inner);
 
-    // Send response back to the client.
-    transmitter.send_message(Message::ChannelConfiguration(ChannelConfigurationParameters {
-      id: correlation_id,
-      channel: channel_id.into(),
-      max_clients: new_config.max_clients,
-      max_payload_size: new_config.max_payload_size,
-    }));
+    // Send ACK response back to the client.
+    transmitter
+      .send_message(Message::SetChannelConfigurationAck(SetChannelConfigurationAckParameters { id: correlation_id }));
 
     Ok(())
   }

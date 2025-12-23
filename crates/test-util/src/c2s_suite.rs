@@ -246,7 +246,7 @@ impl C2sSuite {
 
     // Verify that the server sent the proper response message.
     let reply = self.read_message(username).await?;
-    assert!(matches!(reply, Message::ChannelConfiguration { .. }));
+    assert!(matches!(reply, Message::SetChannelConfigurationAck { .. }));
 
     Ok(())
   }
@@ -274,7 +274,7 @@ impl C2sSuite {
 
     // Verify that the server sent the proper response message.
     let reply = self.read_message(username).await?;
-    assert!(matches!(reply, Message::ChannelAcl { .. }));
+    assert!(matches!(reply, Message::SetChannelAclAck { .. }));
 
     Ok(())
   }

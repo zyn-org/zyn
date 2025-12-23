@@ -381,6 +381,8 @@ mod tests {
     TestCase { name: "MOD_DIRECT_ACK", input: b"MOD_DIRECT_ACK id=2", expected: Ok(Message::ModDirectAck(ModDirectAckParameters { id: 2 })) },
     TestCase { name: "PING", input: b"PING id=1234", expected: Ok(Message::Ping(PingParameters { id: 1234 })) },
     TestCase { name: "PING", input: b"PONG id=1234", expected: Ok(Message::Pong(PongParameters { id: 1234 })) },
+    TestCase { name: "SET_CHAN_ACL_ACK", input: b"SET_CHAN_ACL_ACK id=1", expected: Ok(Message::SetChannelAclAck(SetChannelAclAckParameters { id: 1 })) },
+    TestCase { name: "SET_CHAN_CONFIG_ACK", input: b"SET_CHAN_CONFIG_ACK id=1", expected: Ok(Message::SetChannelConfigurationAck(SetChannelConfigurationAckParameters { id: 1 })) },
     TestCase {
             name: "S2M_CONNECT",
             input: b"S2M_CONNECT version=1 secret=a_secret heartbeat_interval=120",

@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use narwhal_protocol::EventKind::{MemberJoined, MemberLeft};
 use narwhal_protocol::{
-  AclAction, AclType, BroadcastParameters, ChannelAclParameters, ChannelConfigurationParameters, ConnectParameters,
-  ErrorParameters, EventParameters, GetChannelAclParameters, GetChannelConfigurationParameters,
-  JoinChannelAckParameters, JoinChannelParameters, LeaveChannelAckParameters, LeaveChannelParameters,
-  ListChannelsAckParameters, ListChannelsParameters, ListMembersAckParameters, ListMembersParameters,
-  MessageParameters, SetChannelAclParameters, SetChannelConfigurationParameters,
+  AclAction, AclType, BroadcastParameters, ChannelAclParameters, ConnectParameters, ErrorParameters, EventParameters,
+  GetChannelAclParameters, JoinChannelAckParameters, JoinChannelParameters, LeaveChannelAckParameters,
+  LeaveChannelParameters, ListChannelsAckParameters, ListChannelsParameters, ListMembersAckParameters,
+  ListMembersParameters, MessageParameters, SetChannelAclAckParameters, SetChannelAclParameters,
+  SetChannelConfigurationAckParameters, SetChannelConfigurationParameters,
 };
 use narwhal_protocol::{IdentifyParameters, Message};
 use narwhal_test_util::{C2sSuite, assert_message, default_c2s_config};
@@ -1056,36 +1056,28 @@ async fn test_c2s_channel_configuration() -> anyhow::Result<()> {
   // Verify that the server sent the proper channel configuration ack message.
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
-    Message::ChannelConfiguration,
-    ChannelConfigurationParameters {
-      id: 1234,
-      channel: StringAtom::from("!test1@localhost"),
-      max_clients: 25,
-      max_payload_size: 8192
-    }
+    Message::SetChannelConfigurationAck,
+    SetChannelConfigurationAckParameters { id: 1234 }
   );
 
   // Get the channel configuration.
+  // Set the channel configuration again to test idempotency.
   suite
     .write_message(
       TEST_USER_1,
-      Message::GetChannelConfiguration(GetChannelConfigurationParameters {
+      Message::SetChannelConfiguration(SetChannelConfigurationParameters {
         id: 1234,
         channel: StringAtom::from("!test1@localhost"),
+        max_clients: 25,
+        max_payload_size: 8192,
       }),
     )
     .await?;
 
-  // Verify that the server sent the proper channel configuration message.
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
-    Message::ChannelConfiguration,
-    ChannelConfigurationParameters {
-      id: 1234,
-      channel: StringAtom::from("!test1@localhost"),
-      max_clients: 25,
-      max_payload_size: 8192
-    }
+    Message::SetChannelConfigurationAck,
+    SetChannelConfigurationAckParameters { id: 1234 }
   );
 
   suite.teardown().await?;
@@ -1238,13 +1230,8 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
 
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
-    Message::ChannelAcl,
-    ChannelAclParameters {
-      id: 1234,
-      channel: StringAtom::from("!test1@localhost"),
-      r#type: StringAtom::from("join"),
-      nids: Vec::from([StringAtom::from("test_user_2@localhost")].as_slice()),
-    }
+    Message::SetChannelAclAck,
+    SetChannelAclAckParameters { id: 1234 }
   );
 
   // Set the channel ACL for read permissions
@@ -1259,13 +1246,8 @@ async fn test_c2s_channel_acl() -> anyhow::Result<()> {
 
   assert_message!(
     suite.read_message(TEST_USER_1).await?,
-    Message::ChannelAcl,
-    ChannelAclParameters {
-      id: 1235,
-      channel: StringAtom::from("!test1@localhost"),
-      r#type: StringAtom::from("read"),
-      nids: Vec::from([StringAtom::from("example.com")].as_slice()),
-    }
+    Message::SetChannelAclAck,
+    SetChannelAclAckParameters { id: 1235 }
   );
 
   // Test that TEST_USER_2 cannot set ACL (not the owner)

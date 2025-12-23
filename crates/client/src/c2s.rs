@@ -511,7 +511,7 @@ impl C2sClient {
     let (response, _) = handle.await??;
 
     match response {
-      Message::ChannelConfiguration(_) => Ok(()),
+      Message::SetChannelConfigurationAck(_) => Ok(()),
       Message::Error(err) => Err(anyhow!("failed to configure channel: {:?}", err.reason)),
       _ => Err(anyhow!("unexpected response to configure channel request")),
     }
@@ -559,7 +559,7 @@ impl C2sClient {
     let (response, _) = handle.await??;
 
     match response {
-      Message::ChannelAcl(_) => Ok(()),
+      Message::SetChannelAclAck(_) => Ok(()),
       Message::Error(err) => Err(anyhow!("failed to set channel ACL: {:?}", err.reason)),
       _ => Err(anyhow!("unexpected response to set channel ACL request")),
     }
