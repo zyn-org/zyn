@@ -321,6 +321,16 @@ mod tests {
                 expected_out: Some("PONG id=1234\n".to_string()),
             },
             TestCase {
+                name: "SET_CHAN_ACL_ACK",
+                msg: Message::SetChannelAclAck(SetChannelAclAckParameters { id: 1 }),
+                expected_out: Some("SET_CHAN_ACL_ACK id=1\n".to_string()),
+            },
+            TestCase {
+                name: "SET_CHAN_CONFIG_ACK",
+                msg: Message::SetChannelConfigurationAck(SetChannelConfigurationAckParameters { id: 1 }),
+                expected_out: Some("SET_CHAN_CONFIG_ACK id=1\n".to_string()),
+            },
+            TestCase {
                 name: "S2M_AUTH",
                 msg: Message::S2mAuth(S2mAuthParameters { id: 1, token: "a_token".into() }),
                 expected_out: Some("S2M_AUTH id=1 token=a_token\n".to_string()),

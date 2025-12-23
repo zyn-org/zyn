@@ -78,7 +78,9 @@ pub enum Message {
   S2mModDirect(S2mModDirectParameters),
   S2mModDirectAck(S2mModDirectAckParameters),
   SetChannelAcl(SetChannelAclParameters),
+  SetChannelAclAck(SetChannelAclAckParameters),
   SetChannelConfiguration(SetChannelConfigurationParameters),
+  SetChannelConfigurationAck(SetChannelConfigurationAckParameters),
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -458,6 +460,12 @@ pub struct SetChannelAclParameters {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
+pub struct SetChannelAclAckParameters {
+  #[param(validate = "non_zero")]
+  pub id: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
 pub struct SetChannelConfigurationParameters {
   #[param(validate = "non_zero")]
   pub id: u32,
@@ -467,6 +475,12 @@ pub struct SetChannelConfigurationParameters {
 
   pub max_clients: u32,
   pub max_payload_size: u32,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
+pub struct SetChannelConfigurationAckParameters {
+  #[param(validate = "non_zero")]
+  pub id: u32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, ProtocolMessageParameters)]
@@ -588,7 +602,11 @@ impl Message {
       b"S2M_MOD_DIRECT" => Ok(Message::S2mModDirect(S2mModDirectParameters::default())),
       b"S2M_MOD_DIRECT_ACK" => Ok(Message::S2mModDirectAck(S2mModDirectAckParameters::default())),
       b"SET_CHAN_ACL" => Ok(Message::SetChannelAcl(SetChannelAclParameters::default())),
+      b"SET_CHAN_ACL_ACK" => Ok(Message::SetChannelAclAck(SetChannelAclAckParameters::default())),
       b"SET_CHAN_CONFIG" => Ok(Message::SetChannelConfiguration(SetChannelConfigurationParameters::default())),
+      b"SET_CHAN_CONFIG_ACK" => {
+        Ok(Message::SetChannelConfigurationAck(SetChannelConfigurationAckParameters::default()))
+      },
       _ => Err(anyhow::anyhow!("unknown message")),
     }
   }
@@ -637,7 +655,9 @@ impl Message {
       Message::S2mModDirect { .. } => "S2M_MOD_DIRECT",
       Message::S2mModDirectAck { .. } => "S2M_MOD_DIRECT_ACK",
       Message::SetChannelAcl { .. } => "SET_CHAN_ACL",
+      Message::SetChannelAclAck { .. } => "SET_CHAN_ACL_ACK",
       Message::SetChannelConfiguration { .. } => "SET_CHAN_CONFIG",
+      Message::SetChannelConfigurationAck { .. } => "SET_CHAN_CONFIG_ACK",
     }
   }
 
@@ -689,7 +709,9 @@ impl Message {
       S2mModDirect(params) => params.encode(parameter_writer),
       S2mModDirectAck(params) => params.encode(parameter_writer),
       SetChannelAcl(params) => params.encode(parameter_writer),
+      SetChannelAclAck(params) => params.encode(parameter_writer),
       SetChannelConfiguration(params) => params.encode(parameter_writer),
+      SetChannelConfigurationAck(params) => params.encode(parameter_writer),
     }
   }
 
@@ -740,7 +762,9 @@ impl Message {
       S2mModDirect(params) => params.decode(parameter_reader),
       S2mModDirectAck(params) => params.decode(parameter_reader),
       SetChannelAcl(params) => params.decode(parameter_reader),
+      SetChannelAclAck(params) => params.decode(parameter_reader),
       SetChannelConfiguration(params) => params.decode(parameter_reader),
+      SetChannelConfigurationAck(params) => params.decode(parameter_reader),
     }
   }
 
@@ -833,7 +857,9 @@ impl Message {
 
         Ok(())
       },
+      SetChannelAclAck(params) => params.validate(),
       SetChannelConfiguration(params) => params.validate(),
+      SetChannelConfigurationAck(params) => params.validate(),
     }
   }
 
@@ -883,7 +909,9 @@ impl Message {
       Message::Ping(params) => Some(params.id),
       Message::Pong(params) => Some(params.id),
       Message::SetChannelAcl(params) => Some(params.id),
+      Message::SetChannelAclAck(params) => Some(params.id),
       Message::SetChannelConfiguration(params) => Some(params.id),
+      Message::SetChannelConfigurationAck(params) => Some(params.id),
       Message::S2mAuth(params) => Some(params.id),
       Message::S2mAuthAck(params) => Some(params.id),
       Message::S2mForwardEvent(params) => Some(params.id),

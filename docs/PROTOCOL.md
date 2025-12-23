@@ -38,9 +38,11 @@
   - [GET_CHAN_ACL](#get_chan_acl)
   - [CHAN_ACL](#chan_acl)
   - [SET_CHAN_ACL](#set_chan_acl)
+  - [SET_CHAN_ACL_ACK](#set_chan_acl_ack)
   - [GET_CHAN_CONFIG](#get_chan_config)
   - [CHAN_CONFIG](#chan_config)
   - [SET_CHAN_CONFIG](#set_chan_config)
+  - [SET_CHAN_CONFIG_ACK](#set_chan_config_ack)
   - [EVENT](#event)
   - [PING](#ping)
   - [PONG](#pong)
@@ -724,7 +726,7 @@ GET_CHAN_ACL id=7 channel=!42@example.com type=publish
 
 Returns the access control list for a specific type for a channel.
 
-**Direction**: Server → Client (in response to GET_CHAN_ACL or SET_CHAN_ACL)
+**Direction**: Server → Client (in response to GET_CHAN_ACL)
 
 **Parameters**:
 - `id` (u32, required): Request identifier (must be non-zero)
@@ -762,7 +764,25 @@ SET_CHAN_ACL id=8 channel=!42@example.com type=publish action=add nids:2=alice@e
 SET_CHAN_ACL id=9 channel=!42@example.com type=read action=remove nids:1=guest@example.com
 ```
 
-**Response**: [CHAN_ACL](#chan_acl) with the updated ACL or [ERROR](#error)
+**Response**: [SET_CHAN_ACL_ACK](#set_chan_acl_ack) or [ERROR](#error)
+
+---
+
+### SET_CHAN_ACL_ACK
+
+Acknowledges that an ACL modification was successfully applied.
+
+**Direction**: Server → Client (in response to SET_CHAN_ACL)
+
+**Parameters**:
+- `id` (u32, required): Request identifier matching the SET_CHAN_ACL request (must be non-zero)
+
+**Example**:
+```
+SET_CHAN_ACL_ACK id=8
+```
+
+**Note**: To retrieve the updated ACL after modification, use [GET_CHAN_ACL](#get_chan_acl).
 
 ---
 
@@ -785,7 +805,7 @@ GET_CHAN_CONFIG id=9 channel=!42@example.com
 
 ### CHAN_CONFIG
 
-Returns or sets the configuration for a channel.
+Returns the configuration for a channel.
 
 **Direction**: Server → Client (in response to GET_CHAN_CONFIG)
 
@@ -819,7 +839,25 @@ Sets the configuration for a channel.
 SET_CHAN_CONFIG id=10 channel=!42@example.com max_clients=200 max_payload_size=2097152
 ```
 
-**Response**: [CHAN_CONFIG](#chan_config) with the updated configuration or [ERROR](#error)
+**Response**: [SET_CHAN_CONFIG_ACK](#set_chan_config_ack) or [ERROR](#error)
+
+---
+
+### SET_CHAN_CONFIG_ACK
+
+Acknowledges that a channel configuration was successfully applied.
+
+**Direction**: Server → Client (in response to SET_CHAN_CONFIG)
+
+**Parameters**:
+- `id` (u32, required): Request identifier matching the SET_CHAN_CONFIG request (must be non-zero)
+
+**Example**:
+```
+SET_CHAN_CONFIG_ACK id=10
+```
+
+**Note**: To retrieve the updated configuration after modification, use [GET_CHAN_CONFIG](#get_chan_config).
 
 ---
 
@@ -1414,6 +1452,12 @@ Messages that expect responses use an `id` parameter for correlation:
 
 ## Version History
 
+- **Version 1.2** (Current):
+  - Added `SET_CHAN_ACL_ACK` message: SET_CHAN_ACL now returns a simple acknowledgment instead of the full ACL
+  - Added `SET_CHAN_CONFIG_ACK` message: SET_CHAN_CONFIG now returns a simple acknowledgment instead of the full configuration
+  - Changed `CHAN_ACL` to only be sent in response to GET_CHAN_ACL (not SET_CHAN_ACL)
+  - Changed `CHAN_CONFIG` to only be sent in response to GET_CHAN_CONFIG (not SET_CHAN_CONFIG)
+  - Clients should use GET_CHAN_ACL and GET_CHAN_CONFIG to retrieve current values after SET operations
 - **Version 1.1** (December 2025):
   - Changed ChannelId handler from numeric (u32) to alphanumeric string (up to 256 characters)
   - Made `channel` parameter required in JOIN message (previously optional for dynamic channel creation)
