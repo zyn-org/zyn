@@ -1472,6 +1472,9 @@ Messages that expect responses use an `id` parameter for correlation:
   - Added `SET_CHAN_CONFIG_ACK` message: SET_CHAN_CONFIG now returns a simple acknowledgment instead of the full configuration
   - Changed `CHAN_ACL` to only be sent in response to GET_CHAN_ACL (not SET_CHAN_ACL)
   - Changed `CHAN_CONFIG` to only be sent in response to GET_CHAN_CONFIG (not SET_CHAN_CONFIG)
+  - Added pagination support to `CHANNELS`/`CHANNELS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
+  - Added pagination support to `MEMBERS`/`MEMBERS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
+  - Added pagination support to `GET_CHAN_ACL`/`CHAN_ACL` messages with optional `page`, `page_size`, and `total_count` parameters
   - Clients should use GET_CHAN_ACL and GET_CHAN_CONFIG to retrieve current values after SET operations
 - **Version 1.1** (December 2025):
   - Changed ChannelId handler from numeric (u32) to alphanumeric string (up to 256 characters)
