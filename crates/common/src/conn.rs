@@ -20,9 +20,9 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, trace, warn};
 
 use narwhal_protocol::ErrorReason::{
-  BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ServerShuttingDown, Timeout,
+  BadRequest, InternalServerError, OutboundQueueIsFull, PolicyViolation, ResponseTooLarge, ServerShuttingDown, Timeout,
 };
-use narwhal_protocol::{ErrorParameters, Message, PingParameters, deserialize, serialize};
+use narwhal_protocol::{ErrorParameters, Message, PingParameters, SerializeError, deserialize, serialize};
 
 use narwhal_util::codec::{StreamReader, StreamReaderError};
 use narwhal_util::io::write_all_vectored;
@@ -1140,12 +1140,32 @@ impl<D: Dispatcher> ConnInner<D> {
     Ok(())
   }
 
-  fn serialize_message(message: &Message, mut message_buffer: MutablePoolBuffer) -> anyhow::Result<PoolBuffer> {
+  fn serialize_message(message: &Message, message_buffer: MutablePoolBuffer) -> anyhow::Result<PoolBuffer> {
+    Self::serialize_message_inner(message, message_buffer, true)
+      .map_err(|e| anyhow!("failed to serialize message: {}", e))
+  }
+
+  fn serialize_message_inner(
+    message: &Message,
+    mut message_buffer: MutablePoolBuffer,
+    handle_too_large: bool,
+  ) -> anyhow::Result<PoolBuffer> {
     let write_buffer = message_buffer.as_mut_slice();
 
-    let n = serialize(message, write_buffer).map_err(|e| anyhow!("failed to serialize message: {}", e))?;
+    match serialize(message, write_buffer) {
+      Ok(n) => Ok(message_buffer.freeze(n)),
+      Err(SerializeError::MessageTooLarge) if handle_too_large => match message.correlation_id() {
+        Some(correlation_id) => {
+          let error_msg = narwhal_protocol::Error::new(ResponseTooLarge)
+            .with_id(correlation_id)
+            .with_detail(StringAtom::from("response exceeded maximum message size"));
 
-    Ok(message_buffer.freeze(n))
+          Self::serialize_message_inner(&error_msg.into(), message_buffer, false)
+        },
+        None => Err(anyhow!(SerializeError::MessageTooLarge)),
+      },
+      Err(e) => Err(e.into()),
+    }
   }
 
   async fn read_payload<T>(

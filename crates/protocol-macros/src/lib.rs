@@ -242,7 +242,7 @@ fn generate_message_parameters(input: &DeriveInput) -> Result<TokenStream, syn::
   // Generate the final implementation
   let expanded = quote! {
       impl ProtocolMessageParameters for #struct_name {
-          fn encode(&self, parameter_writer: &mut ParameterWriter) -> anyhow::Result<usize> {
+          fn encode(&self, parameter_writer: &mut ParameterWriter) -> Result<usize, SerializeError> {
             #encode_impl
           }
 

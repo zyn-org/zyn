@@ -18,5 +18,5 @@ pub use event::*;
 pub use id::*;
 pub use message::*;
 pub use qos::*;
-pub use serialize::serialize;
+pub use serialize::{SerializeError, serialize};
 pub use stream::request;

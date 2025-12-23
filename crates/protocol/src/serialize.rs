@@ -10,59 +10,103 @@ use narwhal_util::string_atom::StringAtom;
 
 const ESC_CHAR: [char; 4] = ['"', '\'', ':', '*'];
 
-const MESSAGE_TOO_LARGE_ERR_MSG: &str = "message too large";
+/// Errors that can occur during message serialization.
+#[derive(Debug)]
+pub enum SerializeError {
+  /// Message exceeds maximum size limit.
+  MessageTooLarge,
+  /// Other serialization errors.
+  Other(anyhow::Error),
+}
+
+impl std::fmt::Display for SerializeError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      SerializeError::MessageTooLarge => write!(f, "message exceeds maximum size limit"),
+      SerializeError::Other(e) => write!(f, "{}", e),
+    }
+  }
+}
+
+impl std::error::Error for SerializeError {}
+
+impl From<anyhow::Error> for SerializeError {
+  fn from(e: anyhow::Error) -> Self {
+    SerializeError::Other(e)
+  }
+}
+
+impl From<std::io::Error> for SerializeError {
+  fn from(e: std::io::Error) -> Self {
+    SerializeError::Other(e.into())
+  }
+}
+
+impl From<std::str::Utf8Error> for SerializeError {
+  fn from(e: std::str::Utf8Error) -> Self {
+    SerializeError::Other(e.into())
+  }
+}
+
+/// Helper function to write formatted output to a cursor, converting WriteZero errors to MessageTooLarge.
+fn write_fmt_to_cursor(c: &mut Cursor<&mut [u8]>, args: fmt::Arguments) -> Result<(), SerializeError> {
+  use std::io::ErrorKind;
+  c.write_fmt(args).map_err(|e| {
+    if e.kind() == ErrorKind::WriteZero { SerializeError::MessageTooLarge } else { SerializeError::from(e) }
+  })
+}
 
 /// This trait is used to format a parameter value for a message.
 pub trait ParameterValueDisplay<'a>: fmt::Display {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()>;
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError>;
 }
 
 impl<'a> ParameterValueDisplay<'a> for &str {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
     if self.is_empty() {
-      return write!(c, "\\\"\\\"");
+      return write_fmt_to_cursor(c, format_args!("\\\"\\\""));
     }
     // If the value doesn't contain any whitespace, we can write it directly.
     if self.find(|c| [' ', '\t', '\x0b', '\x0c', '\r'].contains(&c)).is_none() {
-      return write!(c, "{}", self);
+      return write_fmt_to_cursor(c, format_args!("{}", self));
     }
     for esc_char in ESC_CHAR.iter() {
       if self.find(*esc_char).is_some() {
         continue;
       }
-      return write!(c, "\\{}{}\\{}", esc_char, self, esc_char);
+      return write_fmt_to_cursor(c, format_args!("\\{}{}\\{}", esc_char, self, esc_char));
     }
-    Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "unable to escape parameter value"))
+    Err(SerializeError::Other(anyhow::anyhow!("unable to escape parameter value")))
   }
 }
 
 impl<'a> ParameterValueDisplay<'a> for StringAtom {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
     self.deref().fmt_param(c)
   }
 }
 
 impl<'a> ParameterValueDisplay<'a> for u8 {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
-    write!(c, "{}", self)
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
+    write_fmt_to_cursor(c, format_args!("{}", self))
   }
 }
 
 impl<'a> ParameterValueDisplay<'a> for u16 {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
-    write!(c, "{}", self)
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
+    write_fmt_to_cursor(c, format_args!("{}", self))
   }
 }
 
 impl<'a> ParameterValueDisplay<'a> for u32 {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
-    write!(c, "{}", self)
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
+    write_fmt_to_cursor(c, format_args!("{}", self))
   }
 }
 
 impl<'a> ParameterValueDisplay<'a> for bool {
-  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> std::io::Result<()> {
-    write!(c, "{}", self)
+  fn fmt_param(&self, c: &mut Cursor<&'a mut [u8]>) -> Result<(), SerializeError> {
+    write_fmt_to_cursor(c, format_args!("{}", self))
   }
 }
 
@@ -79,9 +123,9 @@ impl<'a> ParameterWriter<'a> {
     Self { c }
   }
 
-  pub fn write_param<T: ParameterValueDisplay<'a>>(&mut self, name: &[u8], value: &T) -> anyhow::Result<usize> {
+  pub fn write_param<T: ParameterValueDisplay<'a>>(&mut self, name: &[u8], value: &T) -> Result<usize, SerializeError> {
     let pos = self.c.position() as usize;
-    write!(self.c, " {}=", std::str::from_utf8(name)?)?;
+    write_fmt_to_cursor(&mut self.c, format_args!(" {}=", std::str::from_utf8(name)?))?;
     value.fmt_param(&mut self.c)?;
     let n = (self.c.position() as usize) - pos;
     Ok(n)
@@ -91,7 +135,7 @@ impl<'a> ParameterWriter<'a> {
     &mut self,
     name: &[u8],
     values: &[T],
-  ) -> anyhow::Result<usize> {
+  ) -> Result<usize, SerializeError> {
     let val_len = values.len();
 
     // Don't write anything if the slice is empty.
@@ -100,15 +144,15 @@ impl<'a> ParameterWriter<'a> {
     }
 
     let pos = self.c.position() as usize;
-    write!(self.c, " {}:{}", std::str::from_utf8(name)?, val_len)?;
+    write_fmt_to_cursor(&mut self.c, format_args!(" {}:{}", std::str::from_utf8(name)?, val_len))?;
 
     if val_len > 0 {
-      write!(self.c, "=")?;
+      write_fmt_to_cursor(&mut self.c, format_args!("="))?;
 
       let mut first = true;
       for value in values {
         if !first {
-          write!(self.c, " ")?;
+          write_fmt_to_cursor(&mut self.c, format_args!(" "))?;
         }
         value.fmt_param(&mut self.c)?;
         first = false;
@@ -120,7 +164,7 @@ impl<'a> ParameterWriter<'a> {
 }
 
 /// Serializes a message to a byte buffer.
-pub fn serialize(msg: &Message, out: &mut [u8]) -> anyhow::Result<usize> {
+pub fn serialize(msg: &Message, out: &mut [u8]) -> Result<usize, SerializeError> {
   let mut n = 0;
   let mut c = Cursor::new(out);
 
@@ -136,10 +180,10 @@ pub fn serialize(msg: &Message, out: &mut [u8]) -> anyhow::Result<usize> {
 }
 
 /// Writes bytes to a cursor.
-fn write_bytes(bytes: &[u8], c: &mut Cursor<&mut [u8]>) -> anyhow::Result<usize> {
+fn write_bytes(bytes: &[u8], c: &mut Cursor<&mut [u8]>) -> Result<usize, SerializeError> {
   let n = c.write(bytes)?;
   if n < bytes.len() {
-    return Err(anyhow::anyhow!(MESSAGE_TOO_LARGE_ERR_MSG));
+    return Err(SerializeError::MessageTooLarge);
   }
   Ok(n)
 }
