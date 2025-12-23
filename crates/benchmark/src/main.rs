@@ -228,9 +228,10 @@ async fn create_and_join_channel(
   clients: &[C2sClient],
   num_producers: usize,
   num_consumers: usize,
+  channel_index: usize,
 ) -> Result<StringAtom> {
-  // Generate a unique channel name using timestamp and random number
-  let channel_id = format!("bench{}@localhost", rand::random::<u32>());
+  // Generate a unique channel name using the provided index
+  let channel_id = format!("!bench_{}@localhost", channel_index);
   let channel: StringAtom = channel_id.into();
 
   // First client joins and creates the channel
@@ -535,7 +536,7 @@ async fn perform_benchmark(cli: &Cli, metrics: &mut BenchmarkMetrics) -> Result<
     if cli.channels > 1 {
       info!("creating channel {} of {}...", i + 1, cli.channels);
     }
-    let channel = create_and_join_channel(&all_clients, cli.producers, cli.consumers).await?;
+    let channel = create_and_join_channel(&all_clients, cli.producers, cli.consumers, i + 1).await?;
     channels.push(channel);
   }
 
