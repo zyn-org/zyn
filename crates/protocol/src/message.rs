@@ -3,7 +3,7 @@
 use std::str::FromStr;
 
 use crate::deserialize::ParameterReader;
-use crate::serialize::ParameterWriter;
+use crate::serialize::{ParameterWriter, SerializeError};
 use crate::{AclAction, AclType, ErrorReason, EventKind};
 
 use narwhal_protocol_macros::ProtocolMessageParameters;
@@ -13,7 +13,7 @@ use narwhal_util::string_atom::StringAtom;
 pub trait ProtocolMessageParameters {
   /// Encodes the message parameters.
   /// The number of bytes written is returned.
-  fn encode(&self, parameter_writer: &mut ParameterWriter) -> anyhow::Result<usize>;
+  fn encode(&self, parameter_writer: &mut ParameterWriter) -> Result<usize, SerializeError>;
 
   /// Decodes the message parameters.
   fn decode(&mut self, parameter_reader: &mut ParameterReader) -> anyhow::Result<()>;
@@ -673,7 +673,7 @@ impl Message {
 
   /// Encodes the parameters of the message.
   /// The number of bytes written is returned.
-  pub fn encode_parameters(&self, parameter_writer: &mut ParameterWriter) -> anyhow::Result<usize> {
+  pub fn encode_parameters(&self, parameter_writer: &mut ParameterWriter) -> Result<usize, SerializeError> {
     use crate::Message::*;
 
     match self {

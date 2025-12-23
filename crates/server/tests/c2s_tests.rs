@@ -1831,3 +1831,72 @@ async fn test_c2s_channel_acl_read_deny() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_c2s_response_too_large() -> anyhow::Result<()> {
+  let mut config = default_c2s_config();
+  config.limits.max_message_size = 512; // Set a max message size to trigger RESPONSE_TOO_LARGE error.
+  config.limits.max_clients_per_channel = 500;
+
+  let mut suite = C2sSuite::new(config);
+  suite.setup().await?;
+
+  // Identify test user.
+  suite.identify(TEST_USER_1).await?;
+
+  // Create a channel with TEST_USER_1.
+  suite.join_channel(TEST_USER_1, "!testchannel@localhost", None).await?;
+
+  // Add NIDs to the channel ACL to definitely exceed the 512 byte message size limit.
+  for batch in 0..50 {
+    let mut nids = Vec::new();
+    for i in 1..=5 {
+      let nid_num = batch * 5 + i;
+      nids.push(StringAtom::from(format!("user{}@example.com", nid_num)));
+    }
+
+    let set_channel_acl = SetChannelAclParameters {
+      id: batch + 1,
+      channel: StringAtom::from("!testchannel@localhost"),
+      r#type: StringAtom::from("join"),
+      action: StringAtom::from("add"),
+      nids,
+    };
+    suite.write_message(TEST_USER_1, Message::SetChannelAcl(set_channel_acl)).await?;
+
+    assert_message!(
+      suite.read_message(TEST_USER_1).await?,
+      Message::SetChannelAclAck,
+      SetChannelAclAckParameters { id: batch + 1 }
+    );
+  }
+
+  // Request the ACL without pagination - this should exceed the message size limit.
+  suite
+    .write_message(
+      TEST_USER_1,
+      Message::GetChannelAcl(GetChannelAclParameters {
+        id: 100,
+        channel: StringAtom::from("!testchannel@localhost"),
+        r#type: StringAtom::from("join"),
+        page: None,
+        page_size: None,
+      }),
+    )
+    .await?;
+
+  // Verify that the server sent RESPONSE_TOO_LARGE error.
+  assert_message!(
+    suite.read_message(TEST_USER_1).await?,
+    Message::Error,
+    ErrorParameters {
+      id: Some(100),
+      reason: narwhal_protocol::ErrorReason::ResponseTooLarge.into(),
+      detail: Some(StringAtom::from("response exceeded maximum message size")),
+    }
+  );
+
+  suite.teardown().await?;
+
+  Ok(())
+}

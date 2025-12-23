@@ -124,7 +124,7 @@ The client initiates a socket connection and then writes a sequence of request m
 
 The server guarantees that on a single TCP connection, requests will be processed in the order they are sent, and responses will return in that order as well. However, the protocol supports multiple in-flight requests through a correlation ID mechanism, allowing clients to pipeline requests without waiting for each response.
 
-The server has a configurable maximum limit on message size (`max_message_size`) and payload size (`max_payload_size`), communicated during connection establishment. Any message that exceeds these limits will result in an error or connection termination.
+The server has a configurable maximum limit on message size (`max_message_size`) and payload size (`max_payload_size`), communicated during connection establishment. Client requests that exceed these limits will result in connection termination. For server responses that exceed the `max_message_size` limit, the server will attempt to send a `RESPONSE_TOO_LARGE` error instead of the original response, allowing the client to retry with pagination or adjust their request parameters.
 
 **Transport Layer Requirements:**
 
@@ -459,6 +459,9 @@ Requests to join a channel.
 ```
 JOIN id=1 channel=!general@example.com
 ```
+
+**Notes**:
+- May return `RESOURCE_CONFLICT` error if the channel is removed during the join operation due to concurrent modifications. Clients should retry the operation.
 
 ---
 
@@ -1228,6 +1231,8 @@ The following error reasons can be returned in [ERROR](#error) messages:
 | `NOT_ALLOWED` | The operation is not allowed for the current user or context |
 | `NOT_IMPLEMENTED` | The requested feature or operation is not yet implemented |
 | `POLICY_VIOLATION` | The request violates server policies or rules |
+| `RESOURCE_CONFLICT` | The operation failed due to a concurrent modification conflict |
+| `RESPONSE_TOO_LARGE` | The response exceeds the maximum message size limit |
 | `SERVER_OVERLOADED` | The server is overloaded and cannot handle the request |
 | `SERVER_SHUTTING_DOWN` | The server is shutting down and not accepting new requests |
 | `TIMEOUT` | The operation timed out before completion |
@@ -1247,6 +1252,8 @@ The following error reasons can be returned in [ERROR](#error) messages:
 - `FORBIDDEN`
 - `NOT_ALLOWED`
 - `NOT_IMPLEMENTED`
+- `RESOURCE_CONFLICT`
+- `RESPONSE_TOO_LARGE`
 - `USER_IN_CHANNEL`
 - `USER_NOT_IN_CHANNEL`
 - `USERNAME_IN_USE`
@@ -1363,6 +1370,17 @@ Client → Server: JOIN id=2 channel=!999@example.com
 Server → Client: ERROR id=2 reason=CHANNEL_NOT_FOUND detail=\:Channel !999@example.com does not exist\:
 ```
 
+### Example 5: Response Too Large with Pagination Recovery
+
+```
+Client → Server: GET_CHAN_ACL id=3 channel=!42@example.com type=join
+Server → Client: ERROR id=3 reason=RESPONSE_TOO_LARGE detail=\:response exceeded maximum message size\:
+
+[Client retries with pagination]
+Client → Server: GET_CHAN_ACL id=4 channel=!42@example.com type=join page=1 page_size=50
+Server → Client: CHAN_ACL id=4 channel=!42@example.com type=join page=1 page_size=50 total_count=250 nids:50=user1@example.com user2@example.com ... user50@example.com
+```
+
 ## Wire Format Details
 
 ### Parameter Encoding
@@ -1475,6 +1493,7 @@ Messages that expect responses use an `id` parameter for correlation:
   - Added pagination support to `CHANNELS`/`CHANNELS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
   - Added pagination support to `MEMBERS`/`MEMBERS_ACK` messages with optional `page`, `page_size`, and `total_count` parameters
   - Added pagination support to `GET_CHAN_ACL`/`CHAN_ACL` messages with optional `page`, `page_size`, and `total_count` parameters
+  - Added `RESPONSE_TOO_LARGE` error reason: Server sends this recoverable error when a response exceeds `max_message_size`, allowing clients to retry with pagination
   - Clients should use GET_CHAN_ACL and GET_CHAN_CONFIG to retrieve current values after SET operations
 - **Version 1.1** (December 2025):
   - Changed ChannelId handler from numeric (u32) to alphanumeric string (up to 256 characters)

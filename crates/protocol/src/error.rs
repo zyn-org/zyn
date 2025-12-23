@@ -55,6 +55,8 @@ pub enum ErrorReason {
   UserNotRegistered,
   /// The operation failed due to a concurrent modification conflict.
   ResourceConflict,
+  /// The response exceeds the maximum message size limit.
+  ResponseTooLarge,
 }
 
 impl From<ErrorReason> for StringAtom {
@@ -88,6 +90,7 @@ impl From<ErrorReason> for &str {
       ErrorReason::UsernameInUse => "USERNAME_IN_USE",
       ErrorReason::UserNotRegistered => "USER_NOT_REGISTERED",
       ErrorReason::ResourceConflict => "RESOURCE_CONFLICT",
+      ErrorReason::ResponseTooLarge => "RESPONSE_TOO_LARGE",
     }
   }
 }
@@ -127,6 +130,7 @@ impl FromStr for ErrorReason {
       "USERNAME_IN_USE" => Ok(ErrorReason::UsernameInUse),
       "USER_NOT_REGISTERED" => Ok(ErrorReason::UserNotRegistered),
       "RESOURCE_CONFLICT" => Ok(ErrorReason::ResourceConflict),
+      "RESPONSE_TOO_LARGE" => Ok(ErrorReason::ResponseTooLarge),
       _ => anyhow::bail!("unknown error reason: {}", s),
     }
   }
@@ -185,6 +189,7 @@ impl Error {
         | ErrorReason::UserNotRegistered
         | ErrorReason::ServerOverloaded
         | ErrorReason::ResourceConflict
+        | ErrorReason::ResponseTooLarge
     )
   }
 }
