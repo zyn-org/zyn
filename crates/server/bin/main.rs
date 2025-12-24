@@ -34,8 +34,11 @@ fn main() {
 
   let cli = Cli::parse();
 
-  let runtime =
-    tokio::runtime::Builder::new_multi_thread().worker_threads(worker_threads).enable_all().build().unwrap();
+  let runtime = if worker_threads == 1 {
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+  } else {
+    tokio::runtime::Builder::new_multi_thread().worker_threads(worker_threads).enable_all().build().unwrap()
+  };
 
   runtime.block_on(async {
     match narwhal_server::run(cli.config, worker_threads).await {
