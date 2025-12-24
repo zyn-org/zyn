@@ -68,7 +68,7 @@ fn parse_duration(s: &str) -> Result<Duration> {
   }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
   // Initialize tracing
   tracing_subscriber::fmt().with_target(false).with_thread_ids(false).with_level(true).init();
