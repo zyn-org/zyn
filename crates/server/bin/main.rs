@@ -8,7 +8,7 @@ const ENV_WORKER_THREADS: &str = "NARWHAL_WORKER_THREADS";
 
 /// Command line arguments
 #[derive(Parser, Debug)]
-#[command(name = "narwhal-server")]
+#[command(name = "narwhal")]
 #[command(version = VERSION)]
 #[command(about = "Narwhal server", long_about = None)]
 struct Cli {
