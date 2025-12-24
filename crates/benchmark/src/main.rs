@@ -50,6 +50,10 @@ struct Cli {
   /// Maximum size of message payload in bytes
   #[arg(long, default_value = "16384")]
   max_payload_size: usize,
+
+  /// Number of worker threads to use
+  #[arg(short = 'w', long, default_value = "0")]
+  worker_threads: usize,
 }
 
 /// Parse duration from string (supports: 30s, 5m, 1h)
@@ -68,12 +72,17 @@ fn parse_duration(s: &str) -> Result<Duration> {
   }
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() {
   // Initialize tracing
   tracing_subscriber::fmt().with_target(false).with_thread_ids(false).with_level(true).init();
 
   let cli = Cli::parse();
+
+  let worker_threads = if cli.worker_threads == 0 {
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+  } else {
+    cli.worker_threads
+  };
 
   info!("starting narwhal-bench");
   info!("server: {}", cli.server);
@@ -81,19 +90,27 @@ async fn main() -> Result<()> {
   info!("consumer(s): {}", cli.consumers);
   info!("channel(s): {}", cli.channels);
   info!("duration: {:?}", cli.duration);
+  info!("worker threads: {}", worker_threads);
+
+  // Initialize tokio runtime
+  let rt = if worker_threads == 1 {
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+  } else {
+    tokio::runtime::Builder::new_multi_thread().worker_threads(worker_threads).enable_all().build().unwrap()
+  };
 
   // Run the benchmark
-  match run_benchmark(cli).await {
-    Ok(metrics) => {
-      info!("benchmark completed successfully");
-      print_results(&metrics);
-      Ok(())
-    },
-    Err(e) => {
-      error!("benchmark failed: {}", e);
-      Err(e)
-    },
-  }
+  rt.block_on(async {
+    match run_benchmark(cli).await {
+      Ok(metrics) => {
+        info!("benchmark completed successfully");
+        print_results(&metrics);
+      },
+      Err(e) => {
+        error!("benchmark failed: {}", e);
+      },
+    }
+  })
 }
 
 /// Benchmark metrics
